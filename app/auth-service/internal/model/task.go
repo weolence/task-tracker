@@ -4,7 +4,7 @@ import "time"
 
 type TaskDifficulty int
 type TaskPriority int
-type TaskState int
+type TaskStatus int
 
 const (
 	TaskDifficultyEasy TaskDifficulty = iota
@@ -19,16 +19,19 @@ const (
 )
 
 const (
-	TaskStateNotStarted TaskState = iota
-	TaskStateInWork
-	TaskStateCompleted
+	TaskStatusNotStarted TaskStatus = iota
+	TaskStatusInWork
+	TaskStatusCompleted
 )
 
 type Task struct {
 	ID         int
+	ProjectID  int
+	AssigneeID int
 	Name       string
 	Priority   TaskPriority
 	Difficulty TaskDifficulty
+	Status     TaskStatus
 	StartDate  time.Time
-	EndDate    time.Time
+	EndDate    *time.Time
 }

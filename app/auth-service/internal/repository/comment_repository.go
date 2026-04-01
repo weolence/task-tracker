@@ -73,25 +73,6 @@ func (commentRepository *CommentRepository) DeleteComment(ctx context.Context, c
 	return nil
 }
 
-func (commentRepository *CommentRepository) ChangeContent(ctx context.Context, commentID int, newContent string) error {
-	query := `
-		UPDATE comments
-		SET content = $1
-		WHERE id = $2
-	`
-
-	cmdTag, err := commentRepository.Conn.Exec(ctx, query, newContent, commentID)
-	if err != nil {
-		return err
-	}
-
-	if cmdTag.RowsAffected() == 0 {
-		return errors.New("comment not found")
-	}
-
-	return nil
-}
-
 func (commentRepository *CommentRepository) GetCommentsByAuthorID(ctx context.Context, authorID int) ([]model.Comment, error) {
 	query := `
 		SELECT id, author_id, task_id, content, creation_date
@@ -162,4 +143,23 @@ func (commentRepository *CommentRepository) GetCommentsByTaskID(ctx context.Cont
 	}
 
 	return comments, nil
+}
+
+func (commentRepository *CommentRepository) ChangeContent(ctx context.Context, commentID int, newContent string) error {
+	query := `
+		UPDATE comments
+		SET content = $1
+		WHERE id = $2
+	`
+
+	cmdTag, err := commentRepository.Conn.Exec(ctx, query, newContent, commentID)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("comment not found")
+	}
+
+	return nil
 }

@@ -11,9 +11,10 @@ const (
 
 type Project struct {
 	ID          int
+	ManagerID   int
 	Name        string
 	Description string
 	Status      ProjectStatus
 	StartDate   time.Time
-	EndDate     time.Time
+	EndDate     *time.Time
 }
