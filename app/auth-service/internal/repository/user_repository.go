@@ -43,19 +43,20 @@ func UserRepositoryCreate(ctx context.Context, dbLink string) (*UserRepository, 
 	}, nil
 }
 
-func (userRepository *UserRepository) CreateUser(ctx context.Context, user *model.User) error {
+func (userRepository *UserRepository) CreateUser(ctx context.Context, user model.User) error {
 	query := `
 		INSERT INTO users (email, name, surname, password)
 		VALUES ($1, $2, $3, $4)
-		RETURNING id
 	`
 
-	return userRepository.Conn.QueryRow(ctx, query,
+	_, err := userRepository.Conn.Exec(ctx, query,
 		user.Email,
 		user.Name,
 		user.Surname,
 		user.Password,
-	).Scan(&user.ID)
+	)
+
+	return err
 }
 
 func (userRepository *UserRepository) DeleteUserByEmail(ctx context.Context, email string) error {
@@ -73,6 +74,7 @@ func (userRepository *UserRepository) DeleteUserByEmail(ctx context.Context, ema
 	return nil
 }
 
+// returns nil without errors if user wasn't found
 func (userRepository *UserRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	query := `
 		SELECT id, email, name, surname, password
@@ -91,6 +93,9 @@ func (userRepository *UserRepository) GetUserByEmail(ctx context.Context, email 
 	)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 

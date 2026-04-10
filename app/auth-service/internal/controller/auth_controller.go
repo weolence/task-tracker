@@ -1,11 +1,10 @@
-package service
+package controller
 
 import (
 	errs "auth-service/internal/error"
 	"auth-service/internal/model"
 	"auth-service/internal/repository"
 	"context"
-	"errors"
 	"time"
 )
 
@@ -18,26 +17,27 @@ type AuthController struct {
 	securityKey    []byte
 }
 
-func AuthControllerCreate(userRepository repository.UserRepository) (*AuthController, error) {
+func AuthControllerCreate(userRepository repository.UserRepository, securityKey []byte) (*AuthController, error) {
 	return &AuthController{
 		userRepository: userRepository,
+		securityKey:    securityKey,
 	}, nil
 }
 
 // registers user if there is no account with such email.
 // otherwise error returned.
-func (authController *AuthController) Register(ctx context.Context, user *model.User) error {
+func (authController *AuthController) Register(ctx context.Context, user model.User) error {
 	if user.Email == "" || user.Password == "" || user.Name == "" || user.Surname == "" {
 		return errs.ErrInvalidCredentials
 	}
 
-	_, err := authController.userRepository.GetUserByEmail(ctx, user.Email)
+	u, err := authController.userRepository.GetUserByEmail(ctx, user.Email)
 	if err != nil {
-		return errs.ErrUserAlreadyExists
+		return errs.ErrConnectionToDB
 	}
 
-	if !errors.Is(err, errs.ErrUserNotFound) {
-		return err
+	if u != nil {
+		return errs.ErrUserAlreadyExists
 	}
 
 	hashedPassword, err := HashPassword(user.Password)
@@ -52,6 +52,14 @@ func (authController *AuthController) Register(ctx context.Context, user *model.
 	return err
 }
 
+func (authController *AuthController) DeleteUser(ctx context.Context, email string) error {
+	if email == "" {
+		return errs.ErrInvalidCredentials
+	}
+
+	return authController.userRepository.DeleteUserByEmail(ctx, email)
+}
+
 // returns signed jwt token if user's credentials were correct
 func (authController *AuthController) Login(ctx context.Context, email, password string) (string, error) {
 	if email == "" || password == "" {
@@ -60,17 +68,20 @@ func (authController *AuthController) Login(ctx context.Context, email, password
 
 	user, err := authController.userRepository.GetUserByEmail(ctx, email)
 	if err != nil {
+		return "", errs.ErrConnectionToDB
+	}
+
+	if user == nil {
 		return "", errs.ErrInvalidCredentials
 	}
 
-	err = CompareHashAndPassword(user.Password, password)
-	if err != nil {
+	if err := CompareHashAndPassword(user.Password, password); err != nil {
 		return "", errs.ErrInvalidCredentials
 	}
 
 	signedToken, err := GenerateJwtToken(user, TokenValidityTime, authController.securityKey)
 	if err != nil {
-		return "", errs.ErrCannotCreateJwtToken
+		return "", errs.ErrJwtTokenCreation
 	}
 
 	return signedToken, nil

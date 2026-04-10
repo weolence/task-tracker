@@ -46,7 +46,7 @@ func ProjectRepositoryCreate(ctx context.Context, dbLink string) (*ProjectReposi
 	}, nil
 }
 
-func (projectRepository *ProjectRepository) CreateProject(ctx context.Context, project *model.Project) error {
+func (projectRepository *ProjectRepository) CreateProject(ctx context.Context, project model.Project) error {
 	query := `
 		INSERT INTO projects (manager_id, name, description, status, start_date, end_date)
 		VALUES ($1, $2, $3, $4, $5, $6)

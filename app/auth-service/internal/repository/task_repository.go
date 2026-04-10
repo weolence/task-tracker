@@ -47,7 +47,7 @@ func TaskRepositoryCreate(ctx context.Context, dbLink string) (*TaskRepository, 
 	}, nil
 }
 
-func (taskRepository *TaskRepository) CreateTask(ctx context.Context, task *model.Task) error {
+func (taskRepository *TaskRepository) CreateTask(ctx context.Context, task model.Task) error {
 	query := `
 		INSERT INTO tasks (project_id, assignee_id, name, priority, difficulty, status, start_date, end_date)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

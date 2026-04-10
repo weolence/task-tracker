@@ -43,7 +43,7 @@ func CommentRepositoryCreate(ctx context.Context, dbLink string) (*CommentReposi
 	}, nil
 }
 
-func (commentRepository *CommentRepository) CreateComment(ctx context.Context, comment *model.Comment) error {
+func (commentRepository *CommentRepository) CreateComment(ctx context.Context, comment model.Comment) error {
 	query := `
 		INSERT INTO comments (author_id, task_id, content, creation_date)
 		VALUES ($1, $2, $3, $4)
