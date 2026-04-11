@@ -12,7 +12,7 @@ type TaskRepository struct {
 	Conn *pgx.Conn
 }
 
-func TaskRepositoryCreate(ctx context.Context, dbLink string) (*TaskRepository, error) {
+func NewTaskRepository(ctx context.Context, dbLink string) (*TaskRepository, error) {
 	conn, err := pgx.Connect(ctx, dbLink)
 	if err != nil {
 		return nil, err

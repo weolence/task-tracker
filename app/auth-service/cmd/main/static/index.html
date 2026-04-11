@@ -86,8 +86,8 @@
           email: document.getElementById('login-email').value,
           password: document.getElementById('login-password').value,
         });
-        showMessage('Вход выполнен успешно.', false);
-        showToken(result.token);
+        showMessage('Вход выполнен успешно. Перенаправляем на страницу проектов...', false);
+        window.location.href = `http://localhost:8081/?token=${encodeURIComponent(result.token)}`;
       } catch (error) {
         showMessage(error.message, true);
       }

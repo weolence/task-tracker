@@ -12,7 +12,7 @@ type UserRepository struct {
 	Conn *pgx.Conn
 }
 
-func UserRepositoryCreate(ctx context.Context, dbLink string) (*UserRepository, error) {
+func NewUserRepository(ctx context.Context, dbLink string) (*UserRepository, error) {
 	conn, err := pgx.Connect(ctx, dbLink)
 	if err != nil {
 		return nil, err

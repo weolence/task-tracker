@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . ./
-WORKDIR /app/cmd/server
+WORKDIR /app/cmd/main
 RUN go build -o /auth-service .
 
 # runtime stage

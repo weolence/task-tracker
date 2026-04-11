@@ -36,21 +36,22 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	userRepo, err := repository.UserRepositoryCreate(ctx, dbURL)
+	userRepo, err := repository.NewUserRepository(ctx, dbURL)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	authController, err := controller.AuthControllerCreate(*userRepo, []byte(jwtSecret))
+	authController, err := controller.NewAuthController(*userRepo, []byte(jwtSecret))
 	if err != nil {
 		log.Fatalf("failed to create auth controller: %v", err)
 	}
 
-	authHandler := handler.AuthHandlerCreate(authController)
+	authHandler := handler.NewAuthHandler(authController)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", serveIndex)
 	mux.HandleFunc("/login", authHandler.Login)
+	mux.HandleFunc("/validate-token", authHandler.ValidateToken)
 
 	serverPort := os.Getenv("PORT")
 	if serverPort == "" {

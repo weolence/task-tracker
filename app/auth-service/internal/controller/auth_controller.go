@@ -6,6 +6,8 @@ import (
 	"auth-service/internal/repository"
 	"context"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -17,7 +19,7 @@ type AuthController struct {
 	securityKey    []byte
 }
 
-func AuthControllerCreate(userRepository repository.UserRepository, securityKey []byte) (*AuthController, error) {
+func NewAuthController(userRepository repository.UserRepository, securityKey []byte) (*AuthController, error) {
 	return &AuthController{
 		userRepository: userRepository,
 		securityKey:    securityKey,
@@ -85,4 +87,29 @@ func (authController *AuthController) Login(ctx context.Context, email, password
 	}
 
 	return signedToken, nil
+}
+
+func (authController *AuthController) ValidateToken(ctx context.Context, tokenString string) (int, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return authController.securityKey, nil
+	})
+
+	if err != nil || !token.Valid {
+		return 0, errs.ErrInvalidCredentials
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, errs.ErrInvalidCredentials
+	}
+
+	userIDFloat, ok := claims["user_id"].(float64)
+	if !ok {
+		return 0, errs.ErrInvalidCredentials
+	}
+
+	return int(userIDFloat), nil
 }

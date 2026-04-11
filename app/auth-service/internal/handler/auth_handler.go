@@ -11,13 +11,14 @@ import (
 end-points for registration/authorization will be here
 POST /register
 POST /login
+POST /validate-token
 GET  /profile
 */
 type AuthHandler struct {
 	authController *controller.AuthController
 }
 
-func AuthHandlerCreate(authController *controller.AuthController) *AuthHandler {
+func NewAuthHandler(authController *controller.AuthController) *AuthHandler {
 	return &AuthHandler{
 		authController: authController,
 	}
@@ -63,6 +64,28 @@ func (authHandler *AuthHandler) Login(writer http.ResponseWriter, request *http.
 
 	resp := LoginResponse{
 		Token: token,
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(writer).Encode(resp)
+}
+
+func (authHandler *AuthHandler) ValidateToken(writer http.ResponseWriter, request *http.Request) {
+	var validateRequest ValidateTokenRequest
+
+	if err := json.NewDecoder(request.Body).Decode(&validateRequest); err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := authHandler.authController.ValidateToken(request.Context(), validateRequest.Token)
+	if err != nil {
+		http.Error(writer, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	resp := ValidateTokenResponse{
+		UserID: userID,
 	}
 
 	writer.Header().Set("Content-Type", "application/json")

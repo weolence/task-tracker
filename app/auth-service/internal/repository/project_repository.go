@@ -13,7 +13,7 @@ type ProjectRepository struct {
 	Conn *pgx.Conn
 }
 
-func ProjectRepositoryCreate(ctx context.Context, dbLink string) (*ProjectRepository, error) {
+func NewProjectRepository(ctx context.Context, dbLink string) (*ProjectRepository, error) {
 	conn, err := pgx.Connect(ctx, dbLink)
 	if err != nil {
 		return nil, err

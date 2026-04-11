@@ -15,3 +15,11 @@ type LoginRequest struct {
 type LoginResponse struct {
 	Token string `json:"token"`
 }
+
+type ValidateTokenRequest struct {
+	Token string `json:"token"`
+}
+
+type ValidateTokenResponse struct {
+	UserID int `json:"user_id"`
+}

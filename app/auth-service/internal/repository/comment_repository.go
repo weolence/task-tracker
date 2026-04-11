@@ -12,7 +12,7 @@ type CommentRepository struct {
 	Conn *pgx.Conn
 }
 
-func CommentRepositoryCreate(ctx context.Context, dbLink string) (*CommentRepository, error) {
+func NewCommentRepository(ctx context.Context, dbLink string) (*CommentRepository, error) {
 	conn, err := pgx.Connect(ctx, dbLink)
 	if err != nil {
 		return nil, err
