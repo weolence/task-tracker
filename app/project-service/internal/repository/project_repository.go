@@ -210,13 +210,14 @@ func (projectRepository *ProjectRepository) GetProjectByID(ctx context.Context, 
 
 func (projectRepository *ProjectRepository) GetProjectMembers(ctx context.Context, projectID int) ([]int, error) {
 	query := `
-		SELECT user_id
+		SELECT DISTINCT user_id
 		FROM project_members
 		WHERE project_id = $1
 		UNION
 		SELECT manager_id
 		FROM projects
 		WHERE id = $1
+		ORDER BY 1
 	`
 
 	rows, err := projectRepository.Conn.Query(ctx, query, projectID)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"project-service/internal/model"
 	"project-service/internal/repository"
-	"time"
 )
 
 type TaskController struct {
@@ -28,7 +27,7 @@ func (controller *TaskController) UpdateTaskStatus(ctx context.Context, taskID i
 }
 
 func (controller *TaskController) CreateTask(ctx context.Context, task model.Task) error {
-	task.StartDate = time.Now()
+	// Do not set StartDate on creation. It should be set when the task moves into work.
 	return controller.taskRepository.CreateTask(ctx, task)
 }
 

@@ -33,6 +33,6 @@ type Task struct {
 	Priority    TaskPriority   `json:"priority"`
 	Difficulty  TaskDifficulty `json:"difficulty"`
 	Status      TaskStatus     `json:"status"`
-	StartDate   time.Time      `json:"start_date"`
+	StartDate   *time.Time     `json:"start_date,omitempty"`
 	EndDate     *time.Time     `json:"end_date"`
 }

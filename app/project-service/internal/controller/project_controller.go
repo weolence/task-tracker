@@ -114,9 +114,19 @@ func (controller *ProjectController) GetProjectMembersWithDetails(ctx context.Co
 		return nil, err
 	}
 
-	// Fetch details for each member from auth-service
-	members := make([]model.MemberInfo, 0, len(memberIDs))
+	// Deduplicate if backend returned duplicate IDs
+	seen := make(map[int]bool)
+	dedupedMemberIDs := make([]int, 0, len(memberIDs))
 	for _, memberID := range memberIDs {
+		if !seen[memberID] {
+			seen[memberID] = true
+			dedupedMemberIDs = append(dedupedMemberIDs, memberID)
+		}
+	}
+
+	// Fetch details for each member from auth-service
+	members := make([]model.MemberInfo, 0, len(dedupedMemberIDs))
+	for _, memberID := range dedupedMemberIDs {
 		member, err := controller.fetchUserFromAuthService(memberID)
 		if err != nil {
 			// Log but continue if one user fetch fails
@@ -167,4 +177,17 @@ func (controller *ProjectController) GetUserProjects(ctx context.Context, userID
 		OwnedProjects:  owned,
 		MemberProjects: member,
 	}, nil
+}
+
+func (controller *ProjectController) GetProjectInfo(ctx context.Context, projectID int, userID int) (*model.Project, error) {
+	// Check if user is member or owner of the project
+	isMember, err := controller.projectRepository.IsUserMemberOfProject(ctx, userID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, errors.New("access denied")
+	}
+
+	return controller.projectRepository.GetProjectByID(ctx, projectID)
 }

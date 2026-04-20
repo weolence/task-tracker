@@ -238,3 +238,27 @@ func (handler *ProjectHandler) GetUserProjects(writer http.ResponseWriter, reque
 	writer.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(writer).Encode(resp)
 }
+
+func (handler *ProjectHandler) GetProjectInfo(writer http.ResponseWriter, request *http.Request) {
+	userID, ok := middleware.GetUserID(request.Context())
+	if !ok {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := request.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(writer, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+
+	project, err := handler.projectController.GetProjectInfo(request.Context(), projectID, userID)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(writer).Encode(project)
+}

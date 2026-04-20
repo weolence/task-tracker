@@ -74,6 +74,13 @@
 
       <section style="margin-bottom: 24px;">
         <h2>Пул задач</h2>
+        <div class="sort-controls">
+          <select id="sort-pool">
+            <option value="status">По статусу</option>
+            <option value="priority">По приоритету</option>
+            <option value="difficulty">По сложности</option>
+          </select>
+        </div>
         <div id="task-pool" class="tasks" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
       </section>
     </div>
@@ -256,14 +263,23 @@
       }
     };
 
-    const renderTask = (task) => {
+    const renderTask = (task, draggable = true) => {
       const taskEl = document.createElement('div');
       taskEl.className = 'task';
-      taskEl.draggable = true;
       taskEl.dataset.id = task.id;
       taskEl.dataset.status = task.status;
       taskEl.dataset.priority = task.priority;
       taskEl.dataset.difficulty = task.difficulty;
+
+      if (draggable) {
+        taskEl.draggable = true;
+        taskEl.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', task.id);
+        });
+      } else {
+        taskEl.draggable = false;
+        taskEl.style.cursor = 'pointer';
+      }
 
       let priorityClass = '';
       if (task.priority === 0) priorityClass = 'priority-low';
@@ -277,11 +293,14 @@
 
       taskEl.classList.add(priorityClass, difficultyClass);
 
-      taskEl.innerHTML = `<h3>${task.name}</h3><p>Приоритет: ${['Низкий', 'Средний', 'Высокий'][task.priority]}, Сложность: ${['Легкая', 'Средняя', 'Тяжелая'][task.difficulty]}</p>`;
-
-      taskEl.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData('text/plain', task.id);
-      });
+      const statusText = ['К выполнению', 'В работе', 'Выполнено'][task.status] || 'Неизвестно';
+      const assigneeText = task.assignee_id ? 'Назначена' : 'Не назначена';
+      taskEl.innerHTML = `
+        <h3>${task.name}</h3>
+        <p>Статус: ${statusText}</p>
+        <p>Приоритет: ${['Низкий', 'Средний', 'Высокий'][task.priority]}, Сложность: ${['Легкая', 'Средняя', 'Тяжелая'][task.difficulty]}</p>
+        <p>${assigneeText}</p>
+      `;
 
       return taskEl;
     };
@@ -290,6 +309,15 @@
       if (!userId) await getUserId();
       await getIsManager();
       clearMessage();
+
+      // Load project info
+      try {
+        const project = await apiRequest(`/api/project-info?project_id=${projectId}`);
+        document.getElementById('project-title').innerHTML = `${project.name}<br><small style="font-weight: normal; color: #666;">${project.description}</small>`;
+      } catch (error) {
+        console.error('Failed to load project info:', error);
+      }
+
       try {
         let tasks;
         if (isManager) {
@@ -313,7 +341,7 @@
             columns[task.status].appendChild(taskEl);
           });
 
-          const poolTasks = tasks.filter(task => task.assignee_id == null);
+          const poolTasks = tasks.filter(task => task.status !== 2);
           renderTaskPool(poolTasks);
           await loadMembers();
         } else {
@@ -324,7 +352,7 @@
         }
 
         // Apply sorting
-        ['not-started', 'in-work', 'completed'].forEach(status => {
+        ['pool', 'not-started', 'in-work', 'completed'].forEach(status => {
           sortTasks(status);
         });
 
@@ -337,7 +365,7 @@
       const poolContainer = document.getElementById('task-pool');
       poolContainer.innerHTML = '';
       tasks.forEach(task => {
-        const taskEl = renderTask(task);
+        const taskEl = renderTask(task, false);
         taskEl.addEventListener('click', () => showTaskDetail(task));
         poolContainer.appendChild(taskEl);
       });
@@ -347,14 +375,22 @@
       try {
         const data = await apiRequest(`/api/project-members-details?project_id=${projectId}`);
         const membersList = document.getElementById('members-list');
+        members = [];
+        memberDetails = {};
         if (data.members && data.members.length > 0) {
-          memberDetails = {};
-          data.members.forEach(member => {
+          const seen = new Set();
+          const uniqueMembers = data.members.filter(member => {
+            if (seen.has(member.id)) return false;
+            seen.add(member.id);
+            return true;
+          });
+
+          uniqueMembers.forEach(member => {
             memberDetails[member.id] = member;
             members.push(member.id);
           });
           membersList.innerHTML = '<ul class="members-ul">' + 
-            data.members.map(m => `<li><span class="member-name" onclick="showUserProfile(${m.id})">${m.name} ${m.surname}</span></li>`).join('') + 
+            uniqueMembers.map(m => `<li><span class="member-name" onclick="showUserProfile(${m.id})">${m.name} ${m.surname}</span></li>`).join('') + 
             '</ul>';
         } else {
           membersList.innerHTML = '<p>Нет участников</p>';
@@ -388,13 +424,13 @@
     const showTaskDetail = (task) => {
       document.getElementById('task-detail-title').textContent = task.name;
       const content = document.getElementById('task-detail-content');
+      const startDate = task.start_date ? new Date(task.start_date).toLocaleDateString() : 'Не начата';
       content.innerHTML = `
-        <div class="task-detail"><strong>Название:</strong> ${task.name}</div>
         <div class="task-detail"><strong>Описание:</strong> ${task.description || 'Нет описания'}</div>
         <div class="task-detail"><strong>Приоритет:</strong> ${['Низкий', 'Средний', 'Высокий'][task.priority]}</div>
         <div class="task-detail"><strong>Сложность:</strong> ${['Легкая', 'Средняя', 'Тяжелая'][task.difficulty]}</div>
         <div class="task-detail"><strong>Статус:</strong> ${['К выполнению', 'В работе', 'Выполнено'][task.status]}</div>
-        <div class="task-detail"><strong>Дата создания:</strong> ${new Date(task.start_date).toLocaleDateString()}</div>
+        <div class="task-detail"><strong>Дата начала:</strong> ${startDate}</div>
       `;
 
       const assignSection = document.getElementById('assign-section');
@@ -455,15 +491,19 @@
         const profileContent = document.getElementById('profile-modal-content');
         const userProjectsHtml = buildUserProjectsHtml(userProjects, currentUserProjects);
         
+        // Set title styling
+        const titleEl = document.getElementById('profile-modal-title');
+        titleEl.textContent = `${user.name} ${user.surname}`;
+        titleEl.style.color = '#000';
+        titleEl.style.fontWeight = 'bold';
+        
         profileContent.innerHTML = `
           <div class="profile-section">
-            <h3>${user.name} ${user.surname}</h3>
-            <p style="margin: 8px 0;"><strong>Email:</strong> ${user.email}</p>
+            <p style="margin: 8px 0 0 0; font-size: 0.85em; font-weight: bold; color: #999;">${user.email}</p>
           </div>
           ${userProjectsHtml}
         `;
 
-        document.getElementById('profile-modal-title').textContent = `Профиль: ${user.name} ${user.surname}`;
         document.getElementById('profile-modal').style.display = 'block';
       } catch (error) {
         showMessage(error.message, true);
@@ -530,16 +570,22 @@
 
     const sortTasks = (status) => {
       const select = document.getElementById(`sort-${status}`);
-      const container = document.getElementById(`${status.replace('-', '-')}-tasks`);
+      const containerId = status === 'pool' ? 'task-pool' : `${status.replace('-', '-')}-tasks`;
+      const container = document.getElementById(containerId);
+      if (!select || !container) {
+        return;
+      }
       const sortBy = select.value;
 
       const tasks = Array.from(container.children);
       tasks.sort((a, b) => {
+        if (sortBy === 'status') {
+          return a.dataset.status - b.dataset.status;
+        }
         if (sortBy === 'priority') {
           return b.dataset.priority - a.dataset.priority;
-        } else {
-          return b.dataset.difficulty - a.dataset.difficulty;
         }
+        return b.dataset.difficulty - a.dataset.difficulty;
       });
 
       tasks.forEach(task => container.appendChild(task));
@@ -572,8 +618,11 @@
     });
 
     // Sorting
-    ['not-started', 'in-work', 'completed'].forEach(status => {
-      document.getElementById(`sort-${status}`).addEventListener('change', () => sortTasks(status));
+    ['pool', 'not-started', 'in-work', 'completed'].forEach(status => {
+      const select = document.getElementById(`sort-${status}`);
+      if (select) {
+        select.addEventListener('change', () => sortTasks(status));
+      }
     });
 
     document.getElementById('create-task-form').addEventListener('submit', async (event) => {

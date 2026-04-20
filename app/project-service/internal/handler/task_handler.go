@@ -8,7 +8,6 @@ import (
 	"project-service/internal/model"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type TaskHandler struct {
@@ -147,7 +146,7 @@ func (handler *TaskHandler) CreateTask(writer http.ResponseWriter, request *http
 		Priority:    payload.Priority,
 		Difficulty:  payload.Difficulty,
 		Status:      model.TaskStatusNotStarted,
-		StartDate:   time.Now(),
+		StartDate:   nil,
 	}
 
 	err = handler.taskController.CreateTask(request.Context(), task)

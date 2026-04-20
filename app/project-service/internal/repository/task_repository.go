@@ -34,7 +34,7 @@ func NewTaskRepository(ctx context.Context, dbLink string) (*TaskRepository, err
 		priority INT NOT NULL,
 		difficulty INT NOT NULL,
 		status INT NOT NULL,
-		start_date TIMESTAMP NOT NULL,
+		start_date TIMESTAMP,
 		end_date TIMESTAMP
 	);
 	`
@@ -163,7 +163,11 @@ func (taskRepository *TaskRepository) ChangeDifficulty(ctx context.Context, task
 func (taskRepository *TaskRepository) ChangeStatus(ctx context.Context, taskID int, newStatus model.TaskStatus) error {
 	query := `
 		UPDATE tasks
-		SET status = $1
+		SET status = $1,
+			start_date = CASE
+				WHEN $1 = 1 AND start_date IS NULL THEN now()
+				ELSE start_date
+			END
 		WHERE id = $2
 	`
 
@@ -200,6 +204,7 @@ func (taskRepository *TaskRepository) GetTasksByProjectAndAssignee(ctx context.C
 	tasks := make([]model.Task, 0)
 	for rows.Next() {
 		var task model.Task
+		var startDate *time.Time
 		var endDate *time.Time
 
 		err := rows.Scan(
@@ -211,7 +216,7 @@ func (taskRepository *TaskRepository) GetTasksByProjectAndAssignee(ctx context.C
 			&task.Priority,
 			&task.Difficulty,
 			&task.Status,
-			&task.StartDate,
+			&startDate,
 			&endDate,
 		)
 		if err != nil {
@@ -245,6 +250,7 @@ func (taskRepository *TaskRepository) GetAllTasksByProject(ctx context.Context, 
 	tasks := make([]model.Task, 0)
 	for rows.Next() {
 		var task model.Task
+		var startDate *time.Time
 		var endDate *time.Time
 		var assigneeID *int
 
@@ -257,7 +263,7 @@ func (taskRepository *TaskRepository) GetAllTasksByProject(ctx context.Context, 
 			&task.Priority,
 			&task.Difficulty,
 			&task.Status,
-			&task.StartDate,
+			&startDate,
 			&endDate,
 		)
 		if err != nil {
@@ -265,6 +271,7 @@ func (taskRepository *TaskRepository) GetAllTasksByProject(ctx context.Context, 
 		}
 
 		task.AssigneeID = assigneeID
+		task.StartDate = startDate
 		if endDate != nil {
 			task.EndDate = endDate
 		}
@@ -329,6 +336,7 @@ func (taskRepository *TaskRepository) GetTaskByID(ctx context.Context, taskID in
 	`
 
 	var task model.Task
+	var startDate *time.Time
 	var endDate *time.Time
 	var assigneeID *int
 
@@ -340,7 +348,7 @@ func (taskRepository *TaskRepository) GetTaskByID(ctx context.Context, taskID in
 		&task.Priority,
 		&task.Difficulty,
 		&task.Status,
-		&task.StartDate,
+		&startDate,
 		&endDate,
 	)
 	if err != nil {
@@ -348,6 +356,7 @@ func (taskRepository *TaskRepository) GetTaskByID(ctx context.Context, taskID in
 	}
 
 	task.AssigneeID = assigneeID
+	task.StartDate = startDate
 	if endDate != nil {
 		task.EndDate = endDate
 	}
