@@ -136,6 +136,9 @@
         const card = document.createElement('div');
         card.className = 'card';
         card.innerHTML = `<h3>${project.name}</h3><p>${project.description}</p>`;
+        card.addEventListener('click', () => {
+          window.location.href = `/project/${project.id}`;
+        });
         container.appendChild(card);
       });
     };

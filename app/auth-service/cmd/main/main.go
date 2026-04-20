@@ -52,6 +52,7 @@ func main() {
 	mux.HandleFunc("/", serveIndex)
 	mux.HandleFunc("/login", authHandler.Login)
 	mux.HandleFunc("/validate-token", authHandler.ValidateToken)
+	mux.HandleFunc("/user-info", authHandler.GetUserInfo)
 
 	serverPort := os.Getenv("PORT")
 	if serverPort == "" {

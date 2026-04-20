@@ -23,3 +23,10 @@ type ValidateTokenRequest struct {
 type ValidateTokenResponse struct {
 	UserID int `json:"user_id"`
 }
+
+type UserInfoResponse struct {
+	ID      int    `json:"id"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	Surname string `json:"surname"`
+}

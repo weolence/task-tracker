@@ -4,6 +4,7 @@ import (
 	"auth-service/internal/controller"
 	"auth-service/internal/model"
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -86,6 +87,45 @@ func (authHandler *AuthHandler) ValidateToken(writer http.ResponseWriter, reques
 
 	resp := ValidateTokenResponse{
 		UserID: userID,
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(writer).Encode(resp)
+}
+
+func (authHandler *AuthHandler) GetUserInfo(writer http.ResponseWriter, request *http.Request) {
+	userIDStr := request.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		http.Error(writer, "user_id query parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	userID := 0
+	if err := json.Unmarshal([]byte(userIDStr), &userID); err != nil {
+		// Try parsing as string if json.Unmarshal fails
+		_, err = fmt.Sscanf(userIDStr, "%d", &userID)
+		if err != nil {
+			http.Error(writer, "invalid user_id", http.StatusBadRequest)
+			return
+		}
+	}
+
+	user, err := authHandler.authController.GetUser(request.Context(), userID)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if user == nil {
+		http.Error(writer, "user not found", http.StatusNotFound)
+		return
+	}
+
+	resp := UserInfoResponse{
+		ID:      user.ID,
+		Email:   user.Email,
+		Name:    user.Name,
+		Surname: user.Surname,
 	}
 
 	writer.Header().Set("Content-Type", "application/json")

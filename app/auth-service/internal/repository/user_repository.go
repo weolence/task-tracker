@@ -158,3 +158,30 @@ func (userRepository *UserRepository) ChangePassword(ctx context.Context, email 
 
 	return nil
 }
+
+// GetUserByID returns user info by ID without password
+func (userRepository *UserRepository) GetUserByID(ctx context.Context, userID int) (*model.User, error) {
+	query := `
+		SELECT id, email, name, surname
+		FROM users
+		WHERE id = $1
+	`
+
+	var user model.User
+
+	err := userRepository.Conn.QueryRow(ctx, query, userID).Scan(
+		&user.ID,
+		&user.Email,
+		&user.Name,
+		&user.Surname,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &user, nil
+}

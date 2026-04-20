@@ -113,3 +113,7 @@ func (authController *AuthController) ValidateToken(ctx context.Context, tokenSt
 
 	return int(userIDFloat), nil
 }
+
+func (authController *AuthController) GetUser(ctx context.Context, userID int) (*model.User, error) {
+	return authController.userRepository.GetUserByID(ctx, userID)
+}

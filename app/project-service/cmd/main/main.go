@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 )
 
 //go:embed static/index.html
+//go:embed static/project.html
 var staticFiles embed.FS
 
 func main() {
@@ -38,8 +40,22 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	projectController := controller.NewProjectController(*projectRepo)
+	taskRepo, err := repository.NewTaskRepository(ctx, dbURL)
+	if err != nil {
+		log.Fatalf("failed to connect to task database: %v", err)
+	}
+
+	authServiceURL := os.Getenv("AUTH_SERVICE_URL")
+	if authServiceURL == "" {
+		authServiceURL = "http://localhost:8080"
+	}
+
+	projectController := controller.NewProjectController(*projectRepo, *taskRepo, authServiceURL)
+
+	taskController := controller.NewTaskController(*taskRepo)
+
 	projectHandler := handler.NewProjectHandler(projectController)
+	taskHandler := handler.NewTaskHandler(taskController, projectController)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", serveIndex)
@@ -47,6 +63,37 @@ func main() {
 	authMiddleware := middleware.AuthMiddleware()
 	mux.Handle("/api/dashboard", authMiddleware(http.HandlerFunc(projectHandler.Dashboard)))
 	mux.Handle("/api/projects", authMiddleware(http.HandlerFunc(projectHandler.CreateProject)))
+	mux.Handle("/api/projects/", authMiddleware(http.HandlerFunc(projectHandler.ProjectTasks)))
+
+	// Task endpoints
+	mux.Handle("/api/my-tasks", authMiddleware(http.HandlerFunc(taskHandler.GetMyTasks)))
+	mux.Handle("/api/project-tasks", authMiddleware(http.HandlerFunc(taskHandler.GetAllProjectTasks)))
+	mux.Handle("/api/tasks", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			taskHandler.CreateTask(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+	mux.Handle("/api/tasks/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if strings.Contains(path, "/status") {
+			taskHandler.UpdateTaskStatus(w, r)
+		} else if strings.Contains(path, "/assign") {
+			taskHandler.AssignTask(w, r)
+		} else if r.Method == http.MethodDelete {
+			taskHandler.DeleteTask(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/user-id", authMiddleware(http.HandlerFunc(projectHandler.GetUserID)))
+	mux.Handle("/api/project-members", authMiddleware(http.HandlerFunc(projectHandler.GetProjectMembers)))
+	mux.Handle("/api/project-members-details", authMiddleware(http.HandlerFunc(projectHandler.GetProjectMembersWithDetails)))
+	mux.Handle("/api/user-projects", authMiddleware(http.HandlerFunc(projectHandler.GetUserProjects)))
+	mux.Handle("/api/is-manager", authMiddleware(http.HandlerFunc(projectHandler.IsUserManager)))
+	mux.HandleFunc("/project/", serveProjectPage)
 
 	serverPort := os.Getenv("PORT")
 	if serverPort == "" {
@@ -83,6 +130,22 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	page, err := staticFiles.ReadFile("static/index.html")
+	if err != nil {
+		http.Error(w, "failed to load page", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(page)
+}
+
+func serveProjectPage(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/project/" || !strings.HasPrefix(r.URL.Path, "/project/") {
+		http.NotFound(w, r)
+		return
+	}
+
+	page, err := staticFiles.ReadFile("static/project.html")
 	if err != nil {
 		http.Error(w, "failed to load page", http.StatusInternalServerError)
 		return
