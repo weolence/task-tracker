@@ -19,6 +19,11 @@ type AuthController struct {
 	securityKey    []byte
 }
 
+type TokenPayload struct {
+	UserID int
+	Role   string
+}
+
 func NewAuthController(userRepository repository.UserRepository, securityKey []byte) (*AuthController, error) {
 	return &AuthController{
 		userRepository: userRepository,
@@ -48,6 +53,7 @@ func (authController *AuthController) Register(ctx context.Context, user model.U
 	}
 
 	user.Password = hashedPassword
+	user.Role = model.RoleUser
 
 	err = authController.userRepository.CreateUser(ctx, user)
 
@@ -90,6 +96,15 @@ func (authController *AuthController) Login(ctx context.Context, email, password
 }
 
 func (authController *AuthController) ValidateToken(ctx context.Context, tokenString string) (int, error) {
+	payload, err := authController.ValidateTokenWithRole(ctx, tokenString)
+	if err != nil {
+		return 0, err
+	}
+
+	return payload.UserID, nil
+}
+
+func (authController *AuthController) ValidateTokenWithRole(ctx context.Context, tokenString string) (*TokenPayload, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
@@ -98,22 +113,45 @@ func (authController *AuthController) ValidateToken(ctx context.Context, tokenSt
 	})
 
 	if err != nil || !token.Valid {
-		return 0, errs.ErrInvalidCredentials
+		return nil, errs.ErrInvalidCredentials
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return 0, errs.ErrInvalidCredentials
+		return nil, errs.ErrInvalidCredentials
 	}
 
 	userIDFloat, ok := claims["user_id"].(float64)
 	if !ok {
-		return 0, errs.ErrInvalidCredentials
+		return nil, errs.ErrInvalidCredentials
 	}
 
-	return int(userIDFloat), nil
+	role, ok := claims["role"].(string)
+	if !ok || role == "" {
+		role = model.RoleUser
+	}
+	if !isValidRole(role) {
+		return nil, errs.ErrInvalidCredentials
+	}
+
+	return &TokenPayload{
+		UserID: int(userIDFloat),
+		Role:   role,
+	}, nil
 }
 
 func (authController *AuthController) GetUser(ctx context.Context, userID int) (*model.User, error) {
 	return authController.userRepository.GetUserByID(ctx, userID)
+}
+
+func (authController *AuthController) ChangeRole(ctx context.Context, email string, role string) error {
+	if email == "" || !isValidRole(role) {
+		return errs.ErrInvalidCredentials
+	}
+
+	return authController.userRepository.ChangeRole(ctx, email, role)
+}
+
+func isValidRole(role string) bool {
+	return role == model.RoleUser || role == model.RoleAdmin
 }

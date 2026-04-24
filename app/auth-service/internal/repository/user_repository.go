@@ -29,11 +29,38 @@ func NewUserRepository(ctx context.Context, dbLink string) (*UserRepository, err
 		email TEXT UNIQUE NOT NULL,
 		name TEXT NOT NULL,
 		surname TEXT NOT NULL,
-		password TEXT NOT NULL
+		password TEXT NOT NULL,
+		role TEXT NOT NULL DEFAULT 'user',
+		CONSTRAINT users_role_check CHECK (role IN ('user', 'admin'))
 	);
 	`
 
 	_, err = conn.Exec(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = conn.Exec(ctx, `
+		ALTER TABLE users
+		ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = conn.Exec(ctx, `
+		DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1
+				FROM pg_constraint
+				WHERE conname = 'users_role_check'
+			) THEN
+				ALTER TABLE users
+				ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin'));
+			END IF;
+		END $$;
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -45,8 +72,8 @@ func NewUserRepository(ctx context.Context, dbLink string) (*UserRepository, err
 
 func (userRepository *UserRepository) CreateUser(ctx context.Context, user model.User) error {
 	query := `
-		INSERT INTO users (email, name, surname, password)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO users (email, name, surname, password, role)
+		VALUES ($1, $2, $3, $4, $5)
 	`
 
 	_, err := userRepository.Conn.Exec(ctx, query,
@@ -54,6 +81,7 @@ func (userRepository *UserRepository) CreateUser(ctx context.Context, user model
 		user.Name,
 		user.Surname,
 		user.Password,
+		user.Role,
 	)
 
 	return err
@@ -77,7 +105,7 @@ func (userRepository *UserRepository) DeleteUserByEmail(ctx context.Context, ema
 // returns nil without errors if user wasn't found
 func (userRepository *UserRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	query := `
-		SELECT id, email, name, surname, password
+		SELECT id, email, name, surname, password, role
 		FROM users
 		WHERE email = $1
 	`
@@ -90,6 +118,7 @@ func (userRepository *UserRepository) GetUserByEmail(ctx context.Context, email 
 		&user.Name,
 		&user.Surname,
 		&user.Password,
+		&user.Role,
 	)
 
 	if err != nil {
@@ -162,7 +191,7 @@ func (userRepository *UserRepository) ChangePassword(ctx context.Context, email 
 // GetUserByID returns user info by ID without password
 func (userRepository *UserRepository) GetUserByID(ctx context.Context, userID int) (*model.User, error) {
 	query := `
-		SELECT id, email, name, surname
+		SELECT id, email, name, surname, role
 		FROM users
 		WHERE id = $1
 	`
@@ -174,6 +203,7 @@ func (userRepository *UserRepository) GetUserByID(ctx context.Context, userID in
 		&user.Email,
 		&user.Name,
 		&user.Surname,
+		&user.Role,
 	)
 
 	if err != nil {
@@ -184,4 +214,23 @@ func (userRepository *UserRepository) GetUserByID(ctx context.Context, userID in
 	}
 
 	return &user, nil
+}
+
+func (userRepository *UserRepository) ChangeRole(ctx context.Context, email string, newRole string) error {
+	query := `
+		UPDATE users
+		SET role = $1
+		WHERE email = $2
+	`
+
+	cmdTag, err := userRepository.Conn.Exec(ctx, query, newRole, email)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
 }

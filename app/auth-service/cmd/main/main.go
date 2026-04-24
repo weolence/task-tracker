@@ -99,7 +99,7 @@ func main() {
 func runInteractiveConsole(authController *controller.AuthController, done chan<- struct{}) {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Interactive console started.")
-	fmt.Println("Commands: register | delete | help | exit")
+	fmt.Println("Commands: register | delete | set-role | help | exit")
 
 	for {
 		fmt.Print("> ")
@@ -115,6 +115,8 @@ func runInteractiveConsole(authController *controller.AuthController, done chan<
 			runInteractiveRegister(authController)
 		case "delete":
 			runInteractiveDelete(authController)
+		case "set-role":
+			runInteractiveSetRole(authController)
 		case "help":
 			printHelp()
 		case "exit", "quit":
@@ -173,8 +175,25 @@ func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  register   - create a user interactively")
 	fmt.Println("  delete     - delete user by email")
+	fmt.Println("  set-role   - set user role (user/admin) by email")
 	fmt.Println("  help       - show this help")
 	fmt.Println("  exit, quit - stop server and quit")
+}
+
+func runInteractiveSetRole(authController *controller.AuthController) {
+	reader := bufio.NewReader(os.Stdin)
+	email := askValue(reader, "Email")
+	role := strings.ToLower(strings.TrimSpace(askValue(reader, "Role (user/admin)")))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := authController.ChangeRole(ctx, strings.TrimSpace(email), role); err != nil {
+		fmt.Printf("set role failed: %v\n", err)
+		return
+	}
+
+	fmt.Println("user role updated successfully")
 }
 
 func askValue(reader *bufio.Reader, prompt string) string {

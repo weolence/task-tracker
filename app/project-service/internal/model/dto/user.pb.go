@@ -26,7 +26,8 @@ type User struct {
 	Id            int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
 	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Surname       string                 `protobuf:"bytes,4,opt,name=surname,proto3" json:"surname,omitempty"` // password is not included for security
+	Surname       string                 `protobuf:"bytes,4,opt,name=surname,proto3" json:"surname,omitempty"`
+	Role          string                 `protobuf:"bytes,5,opt,name=role,proto3" json:"role,omitempty"` // password is not included for security
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -85,6 +86,13 @@ func (x *User) GetName() string {
 func (x *User) GetSurname() string {
 	if x != nil {
 		return x.Surname
+	}
+	return ""
+}
+
+func (x *User) GetRole() string {
+	if x != nil {
+		return x.Role
 	}
 	return ""
 }
@@ -300,6 +308,7 @@ func (x *ValidateTokenRequest) GetToken() string {
 type ValidateTokenResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        int32                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Role          string                 `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -341,17 +350,25 @@ func (x *ValidateTokenResponse) GetUserId() int32 {
 	return 0
 }
 
+func (x *ValidateTokenResponse) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
 var File_user_proto protoreflect.FileDescriptor
 
 const file_user_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"user.proto\x12\x03dto\"Z\n" +
+	"user.proto\x12\x03dto\"n\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x18\n" +
-	"\asurname\x18\x04 \x01(\tR\asurname\"q\n" +
+	"\asurname\x18\x04 \x01(\tR\asurname\x12\x12\n" +
+	"\x04role\x18\x05 \x01(\tR\x04role\"q\n" +
 	"\x0fRegisterRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x12\n" +
@@ -363,9 +380,10 @@ const file_user_proto_rawDesc = "" +
 	"\rLoginResponse\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\",\n" +
 	"\x14ValidateTokenRequest\x12\x14\n" +
-	"\x05token\x18\x01 \x01(\tR\x05token\"0\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\"D\n" +
 	"\x15ValidateTokenResponse\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\x05R\x06userIdB(Z&project-service/internal/model/dto;dtob\x06proto3"
+	"\auser_id\x18\x01 \x01(\x05R\x06userId\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\tR\x04roleB(Z&project-service/internal/model/dto;dtob\x06proto3"
 
 var (
 	file_user_proto_rawDescOnce sync.Once

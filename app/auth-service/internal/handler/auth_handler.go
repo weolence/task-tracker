@@ -112,14 +112,15 @@ func (authHandler *AuthHandler) ValidateToken(writer http.ResponseWriter, reques
 		return
 	}
 
-	userID, err := authHandler.authController.ValidateToken(request.Context(), validateRequest.Token)
+	payload, err := authHandler.authController.ValidateTokenWithRole(request.Context(), validateRequest.Token)
 	if err != nil {
 		http.Error(writer, "invalid token", http.StatusUnauthorized)
 		return
 	}
 
 	resp := dto.ValidateTokenResponse{
-		UserId: int32(userID),
+		UserId: int32(payload.UserID),
+		Role:   payload.Role,
 	}
 
 	bytes, err := protojson.Marshal(&resp)
@@ -162,6 +163,7 @@ func (authHandler *AuthHandler) GetUserInfo(writer http.ResponseWriter, request 
 		Email:   user.Email,
 		Name:    user.Name,
 		Surname: user.Surname,
+		Role:    user.Role,
 	}
 
 	response, err := protojson.Marshal(&resp)

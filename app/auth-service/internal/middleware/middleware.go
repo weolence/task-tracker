@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 
+	"auth-service/internal/model"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -11,6 +13,7 @@ import (
 type contextKey string
 
 const UserIDKey contextKey = "user_id"
+const UserRoleKey contextKey = "user_role"
 
 func AuthMiddleware(secret []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -27,7 +30,7 @@ func AuthMiddleware(secret []byte) func(http.Handler) http.Handler {
 				return
 			}
 
-			userID, err := extractUserID(token)
+			userID, role, err := extractAuthData(token)
 			if err != nil {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
@@ -35,6 +38,7 @@ func AuthMiddleware(secret []byte) func(http.Handler) http.Handler {
 
 			// saving user_id in context for further use in handlers
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			ctx = context.WithValue(ctx, UserRoleKey, role)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -72,23 +76,49 @@ func parseAndValidateToken(tokenString string, secret []byte) (*jwt.Token, error
 	return token, nil
 }
 
-// extractUserID extracts and validates user_id from JWT claims
-func extractUserID(token *jwt.Token) (any, error) {
+// extractAuthData extracts and validates auth data from JWT claims
+func extractAuthData(token *jwt.Token) (int32, string, error) {
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, jwt.ErrSignatureInvalid
+		return 0, "", jwt.ErrSignatureInvalid
 	}
 
-	userID, ok := claims["user_id"]
+	userIDFloat, ok := claims["user_id"].(float64)
 	if !ok {
-		return nil, jwt.ErrSignatureInvalid
+		return 0, "", jwt.ErrSignatureInvalid
 	}
 
-	return userID, nil
+	role, ok := claims["role"].(string)
+	if !ok || role == "" {
+		role = model.RoleUser
+	}
+
+	return int32(userIDFloat), role, nil
 }
 
 // GetUserID extracts user_id from the request context
-func GetUserID(ctx context.Context) any {
-	userID := ctx.Value(UserIDKey)
-	return userID
+func GetUserID(ctx context.Context) (int32, bool) {
+	userID, ok := ctx.Value(UserIDKey).(int32)
+	return userID, ok
+}
+
+func GetUserRole(ctx context.Context) (string, bool) {
+	role, ok := ctx.Value(UserRoleKey).(string)
+	return role, ok
+}
+
+func IsAdmin(ctx context.Context) bool {
+	role, ok := GetUserRole(ctx)
+	return ok && role == "admin"
+}
+
+func AdminOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !IsAdmin(r.Context()) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

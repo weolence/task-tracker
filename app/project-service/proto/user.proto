@@ -9,6 +9,7 @@ message User {
   string email = 2;
   string name = 3;
   string surname = 4;
+  string role = 5;
   // password is not included for security
 }
 
@@ -34,4 +35,5 @@ message ValidateTokenRequest {
 
 message ValidateTokenResponse {
   int32 user_id = 1;
+  string role = 2;
 }

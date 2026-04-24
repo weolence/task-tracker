@@ -26,6 +26,7 @@ func CompareHashAndPassword(hashedPassword, password string) error {
 func GenerateJwtToken(user *model.User, tokenValidityTime time.Duration, securityKey []byte) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": user.ID,
+		"role":    user.Role,
 		"exp":     time.Now().Add(tokenValidityTime).Unix(),
 	}
 
