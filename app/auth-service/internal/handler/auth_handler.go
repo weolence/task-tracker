@@ -3,9 +3,12 @@ package handler
 import (
 	"auth-service/internal/controller"
 	"auth-service/internal/model"
-	"encoding/json"
-	"fmt"
+	"auth-service/internal/model/dto"
+	"io"
 	"net/http"
+	"strconv"
+
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 /*
@@ -26,9 +29,17 @@ func NewAuthHandler(authController *controller.AuthController) *AuthHandler {
 }
 
 func (authHandler *AuthHandler) Register(writer http.ResponseWriter, request *http.Request) {
-	var registerRequest RegisterRequest
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
+	}
+	defer request.Body.Close()
 
-	if err := json.NewDecoder(request.Body).Decode(&registerRequest); err != nil {
+	var registerRequest dto.RegisterRequest
+
+	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &registerRequest)
+	if err != nil {
 		http.Error(writer, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -40,7 +51,7 @@ func (authHandler *AuthHandler) Register(writer http.ResponseWriter, request *ht
 		Surname:  registerRequest.Surname,
 	}
 
-	err := authHandler.authController.Register(request.Context(), user)
+	err = authHandler.authController.Register(request.Context(), user)
 	if err != nil {
 		http.Error(writer, "unable to register", http.StatusBadRequest)
 		return
@@ -50,9 +61,17 @@ func (authHandler *AuthHandler) Register(writer http.ResponseWriter, request *ht
 }
 
 func (authHandler *AuthHandler) Login(writer http.ResponseWriter, request *http.Request) {
-	var loginRequest LoginRequest
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
+	}
+	defer request.Body.Close()
 
-	if err := json.NewDecoder(request.Body).Decode(&loginRequest); err != nil {
+	var loginRequest dto.LoginRequest
+
+	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &loginRequest)
+	if err != nil {
 		http.Error(writer, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -63,18 +82,32 @@ func (authHandler *AuthHandler) Login(writer http.ResponseWriter, request *http.
 		return
 	}
 
-	resp := LoginResponse{
+	resp := dto.LoginResponse{
 		Token: token,
 	}
 
+	bytes, err := protojson.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "unable to login", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(resp)
+	writer.Write(bytes)
 }
 
 func (authHandler *AuthHandler) ValidateToken(writer http.ResponseWriter, request *http.Request) {
-	var validateRequest ValidateTokenRequest
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
+	}
+	defer request.Body.Close()
 
-	if err := json.NewDecoder(request.Body).Decode(&validateRequest); err != nil {
+	var validateRequest dto.ValidateTokenRequest
+
+	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &validateRequest)
+	if err != nil {
 		http.Error(writer, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -85,12 +118,18 @@ func (authHandler *AuthHandler) ValidateToken(writer http.ResponseWriter, reques
 		return
 	}
 
-	resp := ValidateTokenResponse{
-		UserID: userID,
+	resp := dto.ValidateTokenResponse{
+		UserId: int32(userID),
+	}
+
+	bytes, err := protojson.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "unable to validate token", http.StatusInternalServerError)
+		return
 	}
 
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(resp)
+	writer.Write(bytes)
 }
 
 func (authHandler *AuthHandler) GetUserInfo(writer http.ResponseWriter, request *http.Request) {
@@ -100,14 +139,11 @@ func (authHandler *AuthHandler) GetUserInfo(writer http.ResponseWriter, request 
 		return
 	}
 
-	userID := 0
-	if err := json.Unmarshal([]byte(userIDStr), &userID); err != nil {
-		// Try parsing as string if json.Unmarshal fails
-		_, err = fmt.Sscanf(userIDStr, "%d", &userID)
-		if err != nil {
-			http.Error(writer, "invalid user_id", http.StatusBadRequest)
-			return
-		}
+	// Парсим ID как обычное число
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(writer, "invalid user_id", http.StatusBadRequest)
+		return
 	}
 
 	user, err := authHandler.authController.GetUser(request.Context(), userID)
@@ -121,13 +157,19 @@ func (authHandler *AuthHandler) GetUserInfo(writer http.ResponseWriter, request 
 		return
 	}
 
-	resp := UserInfoResponse{
-		ID:      user.ID,
+	resp := dto.User{
+		Id:      user.ID,
 		Email:   user.Email,
 		Name:    user.Name,
 		Surname: user.Surname,
 	}
 
+	response, err := protojson.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "unable to get user info", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(resp)
+	writer.Write(response)
 }
