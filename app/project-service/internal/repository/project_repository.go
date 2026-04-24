@@ -74,7 +74,7 @@ func (projectRepository *ProjectRepository) CreateProject(ctx context.Context, p
 	return id, nil
 }
 
-func (projectRepository *ProjectRepository) GetOwnedProjects(ctx context.Context, userID int) ([]model.Project, error) {
+func (projectRepository *ProjectRepository) GetOwnedProjects(ctx context.Context, userID int32) ([]model.Project, error) {
 	query := `
 		SELECT id, manager_id, name, description, status, start_date, end_date
 		FROM projects
@@ -117,7 +117,7 @@ func (projectRepository *ProjectRepository) GetOwnedProjects(ctx context.Context
 	return projects, nil
 }
 
-func (projectRepository *ProjectRepository) GetMemberProjects(ctx context.Context, userID int) ([]model.Project, error) {
+func (projectRepository *ProjectRepository) GetMemberProjects(ctx context.Context, userID int32) ([]model.Project, error) {
 	query := `
 		SELECT p.id, p.manager_id, p.name, p.description, p.status, p.start_date, p.end_date
 		FROM project_members pm
@@ -161,7 +161,7 @@ func (projectRepository *ProjectRepository) GetMemberProjects(ctx context.Contex
 	return projects, nil
 }
 
-func (projectRepository *ProjectRepository) IsUserMemberOfProject(ctx context.Context, userID int, projectID int) (bool, error) {
+func (projectRepository *ProjectRepository) IsUserMemberOfProject(ctx context.Context, userID int32, projectID int) (bool, error) {
 	query := `
 		SELECT COUNT(*) > 0
 		FROM projects
@@ -208,7 +208,7 @@ func (projectRepository *ProjectRepository) GetProjectByID(ctx context.Context, 
 	return &project, nil
 }
 
-func (projectRepository *ProjectRepository) GetProjectMembers(ctx context.Context, projectID int) ([]int, error) {
+func (projectRepository *ProjectRepository) GetProjectMembers(ctx context.Context, projectID int) ([]int32, error) {
 	query := `
 		SELECT DISTINCT user_id
 		FROM project_members
@@ -226,14 +226,14 @@ func (projectRepository *ProjectRepository) GetProjectMembers(ctx context.Contex
 	}
 	defer rows.Close()
 
-	members := make([]int, 0)
+	members := make([]int32, 0)
 	for rows.Next() {
-		var userID int
+		var userID int32
 		err := rows.Scan(&userID)
 		if err != nil {
 			return nil, err
 		}
-		members = append(members, userID)
+		members = append(members, int32(userID))
 	}
 
 	return members, nil

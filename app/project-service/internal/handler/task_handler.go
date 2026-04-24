@@ -1,13 +1,16 @@
 package handler
 
 import (
-	"encoding/json"
+	"io"
 	"net/http"
 	"project-service/internal/controller"
 	"project-service/internal/middleware"
 	"project-service/internal/model"
+	"project-service/internal/model/dto"
 	"strconv"
 	"strings"
+
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type TaskHandler struct {
@@ -37,14 +40,20 @@ func (handler *TaskHandler) GetMyTasks(writer http.ResponseWriter, request *http
 		return
 	}
 
-	tasks, err := handler.taskController.GetTasksByProjectAndAssignee(request.Context(), projectID, userID)
+	resp, err := handler.taskController.GetTasksByProjectAndAssignee(request.Context(), projectID, int(userID))
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(tasks)
+	writer.Write(bytes)
 }
 
 // GetAllProjectTasks - получить все задачи проекта (только для менеджера)
@@ -69,14 +78,20 @@ func (handler *TaskHandler) GetAllProjectTasks(writer http.ResponseWriter, reque
 		return
 	}
 
-	tasks, err := handler.taskController.GetAllTasksByProject(request.Context(), projectID)
+	resp, err := handler.taskController.GetAllTasksByProject(request.Context(), projectID)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(tasks)
+	writer.Write(bytes)
 }
 
 func (handler *TaskHandler) UpdateTaskStatus(writer http.ResponseWriter, request *http.Request) {
@@ -93,15 +108,21 @@ func (handler *TaskHandler) UpdateTaskStatus(writer http.ResponseWriter, request
 		return
 	}
 
-	var payload struct {
-		Status model.TaskStatus `json:"status"`
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
 	}
-	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+	defer request.Body.Close()
+
+	var updateReq dto.UpdateTaskStatusRequest
+	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &updateReq)
+	if err != nil {
 		http.Error(writer, "bad request", http.StatusBadRequest)
 		return
 	}
 
-	err = handler.taskController.UpdateTaskStatus(request.Context(), taskID, payload.Status)
+	err = handler.taskController.UpdateTaskStatus(request.Context(), taskID, model.TaskStatus(updateReq.Status))
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -110,7 +131,7 @@ func (handler *TaskHandler) UpdateTaskStatus(writer http.ResponseWriter, request
 	writer.WriteHeader(http.StatusOK)
 }
 
-// CreateTask - создать задачу в пул (только для менеджера, без присвоения)
+// creating task in pool for manager to assign later or for members to self-assign (only for manager)
 func (handler *TaskHandler) CreateTask(writer http.ResponseWriter, request *http.Request) {
 	userID, ok := middleware.GetUserID(request.Context())
 	if !ok {
@@ -118,33 +139,39 @@ func (handler *TaskHandler) CreateTask(writer http.ResponseWriter, request *http
 		return
 	}
 
-	var payload struct {
-		ProjectID   int                  `json:"project_id"`
-		Name        string               `json:"name"`
-		Description string               `json:"description"`
-		Priority    model.TaskPriority   `json:"priority"`
-		Difficulty  model.TaskDifficulty `json:"difficulty"`
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
 	}
+	defer request.Body.Close()
 
-	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+	var createReq dto.CreateTaskRequest
+	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &createReq)
+	if err != nil {
 		http.Error(writer, "bad request", http.StatusBadRequest)
 		return
 	}
 
 	// Check if user is manager
-	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, payload.ProjectID)
+	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, int(createReq.ProjectId))
 	if err != nil || !isManager {
 		http.Error(writer, "access denied", http.StatusForbidden)
 		return
 	}
 
+	description := ""
+	if createReq.Description != nil {
+		description = *createReq.Description
+	}
+
 	task := model.Task{
-		ProjectID:   payload.ProjectID,
+		ProjectID:   createReq.ProjectId,
 		AssigneeID:  nil,
-		Name:        payload.Name,
-		Description: payload.Description,
-		Priority:    payload.Priority,
-		Difficulty:  payload.Difficulty,
+		Name:        createReq.Name,
+		Description: description,
+		Priority:    model.TaskPriority(createReq.Priority),
+		Difficulty:  model.TaskDifficulty(createReq.Difficulty),
 		Status:      model.TaskStatusNotStarted,
 		StartDate:   nil,
 	}
@@ -155,10 +182,12 @@ func (handler *TaskHandler) CreateTask(writer http.ResponseWriter, request *http
 		return
 	}
 
+	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusCreated)
+	writer.Write([]byte(`{"message":"created"}`))
 }
 
-// AssignTask - присвоить задачу участнику (только для менеджера)
+// assign task to member (only for manager)
 func (handler *TaskHandler) AssignTask(writer http.ResponseWriter, request *http.Request) {
 	userID, ok := middleware.GetUserID(request.Context())
 	if !ok {
@@ -179,15 +208,21 @@ func (handler *TaskHandler) AssignTask(writer http.ResponseWriter, request *http
 		return
 	}
 
-	var payload struct {
-		AssigneeID int `json:"assignee_id"`
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
 	}
-	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+	defer request.Body.Close()
+
+	var assignReq dto.AssignTaskRequest
+	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &assignReq)
+	if err != nil {
 		http.Error(writer, "bad request", http.StatusBadRequest)
 		return
 	}
 
-	// Get task to verify user is manager of the project
+	// get task to verify user is manager of the project
 	task, err := handler.taskController.GetTaskByID(request.Context(), taskID)
 	if err != nil {
 		http.Error(writer, "task not found", http.StatusNotFound)
@@ -195,25 +230,25 @@ func (handler *TaskHandler) AssignTask(writer http.ResponseWriter, request *http
 	}
 
 	// Check if user is manager of the project or assigning to themselves from pool
-	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, task.ProjectID)
+	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, int(task.ProjectID))
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	isMember, err := handler.projectController.IsUserMember(request.Context(), userID, task.ProjectID)
+	isMember, err := handler.projectController.IsUserMember(request.Context(), userID, int(task.ProjectID))
 	if err != nil || !isMember {
 		http.Error(writer, "access denied", http.StatusForbidden)
 		return
 	}
 
 	// Allow if manager or (assigning to self and task was unassigned)
-	if !isManager && (payload.AssigneeID != userID || task.AssigneeID != nil) {
+	if !isManager && (int32(assignReq.AssigneeId) != userID || task.AssigneeID != nil) {
 		http.Error(writer, "access denied", http.StatusForbidden)
 		return
 	}
 
-	err = handler.taskController.AssignTask(request.Context(), taskID, payload.AssigneeID)
+	err = handler.taskController.AssignTask(request.Context(), taskID, int(assignReq.AssigneeId))
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -222,7 +257,7 @@ func (handler *TaskHandler) AssignTask(writer http.ResponseWriter, request *http
 	writer.WriteHeader(http.StatusOK)
 }
 
-// DeleteTask - удалить задачу (только для менеджера)
+// removes task (available only for manager)
 func (handler *TaskHandler) DeleteTask(writer http.ResponseWriter, request *http.Request) {
 	userID, ok := middleware.GetUserID(request.Context())
 	if !ok {
@@ -251,7 +286,7 @@ func (handler *TaskHandler) DeleteTask(writer http.ResponseWriter, request *http
 	}
 
 	// Check if user is manager of the project
-	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, task.ProjectID)
+	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, int(task.ProjectID))
 	if err != nil || !isManager {
 		http.Error(writer, "access denied", http.StatusForbidden)
 		return

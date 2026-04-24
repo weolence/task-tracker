@@ -142,17 +142,17 @@
         <div class="form-group">
           <label for="task-priority">Приоритет:</label>
           <select id="task-priority" required>
-            <option value="0">Низкий</option>
-            <option value="1">Средний</option>
-            <option value="2">Высокий</option>
+            <option value="1">Низкий</option>
+            <option value="2">Средний</option>
+            <option value="3">Высокий</option>
           </select>
         </div>
         <div class="form-group">
           <label for="task-difficulty">Сложность:</label>
           <select id="task-difficulty" required>
-            <option value="0">Легкая</option>
-            <option value="1">Средняя</option>
-            <option value="2">Тяжелая</option>
+            <option value="1">Легкая</option>
+            <option value="2">Средняя</option>
+            <option value="3">Тяжелая</option>
           </select>
         </div>
         <button type="submit" class="btn btn-primary">Создать</button>
@@ -205,6 +205,54 @@
     };
 
     const token = () => window.localStorage.getItem(storageKey);
+
+    const TASK_PRIORITY_TO_PROTO = {
+      1: 'TASK_PRIORITY_LOW',
+      2: 'TASK_PRIORITY_MEDIUM',
+      3: 'TASK_PRIORITY_HIGH',
+    };
+    const TASK_DIFFICULTY_TO_PROTO = {
+      1: 'TASK_DIFFICULTY_EASY',
+      2: 'TASK_DIFFICULTY_MEDIUM',
+      3: 'TASK_DIFFICULTY_HARD',
+    };
+    const TASK_STATUS_TO_PROTO = {
+      1: 'TASK_STATUS_NOT_STARTED',
+      2: 'TASK_STATUS_IN_WORK',
+      3: 'TASK_STATUS_COMPLETED',
+    };
+    const TASK_PRIORITY_FROM_PROTO = {
+      TASK_PRIORITY_LOW: 0,
+      TASK_PRIORITY_MEDIUM: 1,
+      TASK_PRIORITY_HIGH: 2,
+    };
+    const TASK_DIFFICULTY_FROM_PROTO = {
+      TASK_DIFFICULTY_EASY: 0,
+      TASK_DIFFICULTY_MEDIUM: 1,
+      TASK_DIFFICULTY_HARD: 2,
+    };
+    const TASK_STATUS_FROM_PROTO = {
+      TASK_STATUS_NOT_STARTED: 0,
+      TASK_STATUS_IN_WORK: 1,
+      TASK_STATUS_COMPLETED: 2,
+    };
+
+    const normalizeEnumValue = (value, map) => {
+      if (typeof value === 'number') {
+        return value > 0 ? value - 1 : value;
+      }
+      if (typeof value === 'string' && Object.prototype.hasOwnProperty.call(map, value)) {
+        return map[value];
+      }
+      return 0;
+    };
+
+    const normalizeTask = (task) => ({
+      ...task,
+      priority: normalizeEnumValue(task.priority, TASK_PRIORITY_FROM_PROTO),
+      difficulty: normalizeEnumValue(task.difficulty, TASK_DIFFICULTY_FROM_PROTO),
+      status: normalizeEnumValue(task.status, TASK_STATUS_FROM_PROTO),
+    });
 
     let userId = null;
     let isManager = false;
@@ -319,12 +367,16 @@
       }
 
       try {
-        let tasks;
+        let taskResponse;
         if (isManager) {
-          tasks = await apiRequest(`/api/project-tasks?project_id=${projectId}`);
+          taskResponse = await apiRequest(`/api/project-tasks?project_id=${projectId}`);
         } else {
-          tasks = await apiRequest(`/api/my-tasks?project_id=${projectId}`);
+          taskResponse = await apiRequest(`/api/my-tasks?project_id=${projectId}`);
         }
+
+        const tasks = (Array.isArray(taskResponse)
+          ? taskResponse
+          : taskResponse.tasks || []).map(normalizeTask);
 
         const columns = {
           0: document.getElementById('not-started-tasks'),
@@ -595,7 +647,7 @@
       try {
         await apiRequest(`/api/tasks/${taskId}/status`, {
           method: 'PUT',
-          body: JSON.stringify({ status: parseInt(newStatus) }),
+          body: JSON.stringify({ status: TASK_STATUS_TO_PROTO[parseInt(newStatus) + 1] }),
         });
         loadTasks();
       } catch (error) {
@@ -647,15 +699,19 @@
           return;
         }
 
+        const requestBody = {
+          project_id: parseInt(projectId),
+          name,
+          priority: TASK_PRIORITY_TO_PROTO[priority],
+          difficulty: TASK_DIFFICULTY_TO_PROTO[difficulty],
+        };
+        if (description) {
+          requestBody.description = description;
+        }
+
         await apiRequest('/api/tasks', {
           method: 'POST',
-          body: JSON.stringify({
-            project_id: parseInt(projectId),
-            name,
-            description,
-            priority,
-            difficulty,
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         hideCreateTaskModal();

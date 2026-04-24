@@ -252,7 +252,7 @@ func (taskRepository *TaskRepository) GetAllTasksByProject(ctx context.Context, 
 		var task model.Task
 		var startDate *time.Time
 		var endDate *time.Time
-		var assigneeID *int
+		var assigneeID *int32
 
 		err := rows.Scan(
 			&task.ID,
@@ -338,7 +338,7 @@ func (taskRepository *TaskRepository) GetTaskByID(ctx context.Context, taskID in
 	var task model.Task
 	var startDate *time.Time
 	var endDate *time.Time
-	var assigneeID *int
+	var assigneeID *int32
 
 	err := taskRepository.Conn.QueryRow(ctx, query, taskID).Scan(
 		&task.ID,

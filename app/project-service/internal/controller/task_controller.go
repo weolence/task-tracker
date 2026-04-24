@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"project-service/internal/model"
+	"project-service/internal/model/dto"
 	"project-service/internal/repository"
 )
 
@@ -14,12 +15,72 @@ func NewTaskController(taskRepository repository.TaskRepository) *TaskController
 	return &TaskController{taskRepository: taskRepository}
 }
 
-func (controller *TaskController) GetTasksByProjectAndAssignee(ctx context.Context, projectID int, assigneeID int) ([]model.Task, error) {
-	return controller.taskRepository.GetTasksByProjectAndAssignee(ctx, projectID, assigneeID)
+func (controller *TaskController) GetTasksByProjectAndAssignee(ctx context.Context, projectID int, assigneeID int) (dto.TasksResponse, error) {
+	tasks, err := controller.taskRepository.GetTasksByProjectAndAssignee(ctx, projectID, assigneeID)
+	if err != nil {
+		return dto.TasksResponse{}, err
+	}
+
+	tasksDto := make([]*dto.Task, len(tasks))
+	for i, t := range tasks {
+		var startDate, endDate *string
+		if t.StartDate != nil {
+			s := (*t.StartDate).Format("2006-01-02")
+			startDate = &s
+		}
+		if t.EndDate != nil {
+			s := (*t.EndDate).Format("2006-01-02")
+			endDate = &s
+		}
+		tasksDto[i] = &dto.Task{
+			Id:          t.ID,
+			ProjectId:   t.ProjectID,
+			AssigneeId:  t.AssigneeID,
+			Name:        t.Name,
+			Description: &t.Description,
+			Priority:    dto.TaskPriority(t.Priority),
+			Difficulty:  dto.TaskDifficulty(t.Difficulty),
+			Status:      dto.TaskStatus(t.Status),
+			StartDate:   startDate,
+			EndDate:     endDate,
+		}
+	}
+
+	return dto.TasksResponse{Tasks: tasksDto}, nil
 }
 
-func (controller *TaskController) GetAllTasksByProject(ctx context.Context, projectID int) ([]model.Task, error) {
-	return controller.taskRepository.GetAllTasksByProject(ctx, projectID)
+func (controller *TaskController) GetAllTasksByProject(ctx context.Context, projectID int) (dto.TasksResponse, error) {
+	tasks, err := controller.taskRepository.GetAllTasksByProject(ctx, projectID)
+	if err != nil {
+		return dto.TasksResponse{}, err
+	}
+
+	tasksDto := make([]*dto.Task, len(tasks))
+	for i, t := range tasks {
+		var startDate, endDate *string
+		if t.StartDate != nil {
+			s := (*t.StartDate).Format("2006-01-02")
+			startDate = &s
+		}
+		if t.EndDate != nil {
+			s := (*t.EndDate).Format("2006-01-02")
+			endDate = &s
+		}
+		tasksDto[i] = &dto.Task{
+			Id:          t.ID,
+			ProjectId:   t.ProjectID,
+			AssigneeId:  t.AssigneeID,
+			Name:        t.Name,
+			Description: &t.Description,
+			Priority:    dto.TaskPriority(t.Priority),
+			Difficulty:  dto.TaskDifficulty(t.Difficulty),
+			Status:      dto.TaskStatus(t.Status),
+			StartDate:   startDate,
+			EndDate:     endDate,
+		}
+	}
+
+	return dto.TasksResponse{Tasks: tasksDto}, nil
 }
 
 func (controller *TaskController) UpdateTaskStatus(ctx context.Context, taskID int, status model.TaskStatus) error {

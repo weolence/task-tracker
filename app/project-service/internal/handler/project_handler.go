@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,6 +9,9 @@ import (
 	"project-service/internal/controller"
 	"project-service/internal/middleware"
 	"project-service/internal/model"
+	"project-service/internal/model/dto"
+
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type ProjectHandler struct {
@@ -32,8 +35,14 @@ func (handler *ProjectHandler) Dashboard(writer http.ResponseWriter, request *ht
 		return
 	}
 
+	bytes, err := protojson.MarshalOptions{EmitUnpopulated: true, UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(resp)
+	writer.Write(bytes)
 }
 
 func (handler *ProjectHandler) CreateProject(writer http.ResponseWriter, request *http.Request) {
@@ -48,15 +57,23 @@ func (handler *ProjectHandler) CreateProject(writer http.ResponseWriter, request
 		return
 	}
 
-	var payload createProjectRequest
-	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
+	}
+	defer request.Body.Close()
+
+	var createReq dto.CreateProjectRequest
+	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &createReq)
+	if err != nil {
 		http.Error(writer, "bad request", http.StatusBadRequest)
 		return
 	}
 
 	project := model.Project{
-		Name:        payload.Name,
-		Description: payload.Description,
+		Name:        createReq.Name,
+		Description: createReq.Description,
 	}
 
 	projectID, err := handler.projectController.CreateProject(request.Context(), userID, project)
@@ -65,9 +82,19 @@ func (handler *ProjectHandler) CreateProject(writer http.ResponseWriter, request
 		return
 	}
 
+	resp := dto.CreateProjectResponse{
+		Id: int32(projectID),
+	}
+
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "unable to create project", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusCreated)
-	json.NewEncoder(writer).Encode(createProjectResponse{ID: projectID})
+	writer.Write(bytes)
 }
 
 func (handler *ProjectHandler) ProjectTasks(writer http.ResponseWriter, request *http.Request) {
@@ -108,27 +135,39 @@ func (handler *ProjectHandler) ProjectTasks(writer http.ResponseWriter, request 
 	}
 }
 
-func (handler *ProjectHandler) GetProjectTasks(writer http.ResponseWriter, request *http.Request, projectID int, userID int) {
-	tasks, err := handler.projectController.GetProjectTasks(request.Context(), projectID, userID)
+func (handler *ProjectHandler) GetProjectTasks(writer http.ResponseWriter, request *http.Request, projectID int, userID int32) {
+	resp, err := handler.projectController.GetProjectTasks(request.Context(), projectID, userID)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(tasks)
+	writer.Write(bytes)
 }
 
-func (handler *ProjectHandler) UpdateTaskStatus(writer http.ResponseWriter, request *http.Request, taskID int, userID int) {
-	var payload struct {
-		Status model.TaskStatus `json:"status"`
+func (handler *ProjectHandler) UpdateTaskStatus(writer http.ResponseWriter, request *http.Request, taskID int, userID int32) {
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
 	}
-	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+	defer request.Body.Close()
+
+	var updateReq dto.UpdateTaskStatusRequest
+	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &updateReq)
+	if err != nil {
 		http.Error(writer, "bad request", http.StatusBadRequest)
 		return
 	}
 
-	err := handler.projectController.UpdateTaskStatus(request.Context(), taskID, payload.Status, userID)
+	err = handler.projectController.UpdateTaskStatus(request.Context(), taskID, model.TaskStatus(updateReq.Status), userID)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -144,9 +183,15 @@ func (handler *ProjectHandler) GetUserID(writer http.ResponseWriter, request *ht
 		return
 	}
 
-	resp := map[string]int{"user_id": userID}
+	resp := dto.UserIdResponse{UserId: userID}
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(resp)
+	writer.Write(bytes)
 }
 
 func (handler *ProjectHandler) GetProjectMembers(writer http.ResponseWriter, request *http.Request) {
@@ -169,8 +214,15 @@ func (handler *ProjectHandler) GetProjectMembers(writer http.ResponseWriter, req
 		return
 	}
 
+	resp := dto.ProjectMemberIdsResponse{Members: members}
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(map[string][]int{"members": members})
+	writer.Write(bytes)
 }
 
 func (handler *ProjectHandler) IsUserManager(writer http.ResponseWriter, request *http.Request) {
@@ -193,8 +245,15 @@ func (handler *ProjectHandler) IsUserManager(writer http.ResponseWriter, request
 		return
 	}
 
+	resp := dto.IsUserManagerResponse{IsManager: isManager}
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(map[string]bool{"is_manager": isManager})
+	writer.Write(bytes)
 }
 
 func (handler *ProjectHandler) GetProjectMembersWithDetails(writer http.ResponseWriter, request *http.Request) {
@@ -217,8 +276,14 @@ func (handler *ProjectHandler) GetProjectMembersWithDetails(writer http.Response
 		return
 	}
 
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&members)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(ProjectMembersResponse{Members: members})
+	writer.Write(bytes)
 }
 
 func (handler *ProjectHandler) GetUserProjects(writer http.ResponseWriter, request *http.Request) {
@@ -229,14 +294,20 @@ func (handler *ProjectHandler) GetUserProjects(writer http.ResponseWriter, reque
 		return
 	}
 
-	resp, err := handler.projectController.GetUserProjects(request.Context(), userID)
+	resp, err := handler.projectController.GetUserProjects(request.Context(), int32(userID))
 	if err != nil {
 		http.Error(writer, "failed to load user projects", http.StatusInternalServerError)
 		return
 	}
 
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(resp)
+	writer.Write(bytes)
 }
 
 func (handler *ProjectHandler) GetProjectInfo(writer http.ResponseWriter, request *http.Request) {
@@ -259,6 +330,12 @@ func (handler *ProjectHandler) GetProjectInfo(writer http.ResponseWriter, reques
 		return
 	}
 
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(project)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(project)
+	writer.Write(bytes)
 }

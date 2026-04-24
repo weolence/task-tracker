@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package dto;
+
+option go_package = "project-service/internal/model/dto;dto";
+
+import "user.proto";
+
+enum ProjectStatus {
+  PROJECT_STATUS_UNSPECIFIED = 0;
+  PROJECT_STATUS_IN_WORK = 1;
+  PROJECT_STATUS_ENDED = 2;
+}
+
+message Project {
+  int32 id = 1;
+  int32 manager_id = 2;
+  string name = 3;
+  string description = 4;
+  ProjectStatus status = 5;
+  string start_date = 6;
+  optional string end_date = 7;
+}
+
+enum TaskPriority {
+  TASK_PRIORITY_UNSPECIFIED = 0;
+  TASK_PRIORITY_LOW = 1;
+  TASK_PRIORITY_MEDIUM = 2;
+  TASK_PRIORITY_HIGH = 3;
+}
+
+enum TaskDifficulty {
+  TASK_DIFFICULTY_UNSPECIFIED = 0;
+  TASK_DIFFICULTY_EASY = 1;
+  TASK_DIFFICULTY_MEDIUM = 2;
+  TASK_DIFFICULTY_HARD = 3;
+}
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_NOT_STARTED = 1;
+  TASK_STATUS_IN_WORK = 2;
+  TASK_STATUS_COMPLETED = 3;
+}
+
+message Task {
+  int32 id = 1;
+  int32 project_id = 2;
+  optional int32 assignee_id = 3;
+  string name = 4;
+  optional string description = 5;
+  TaskPriority priority = 6;
+  TaskDifficulty difficulty = 7;
+  TaskStatus status = 8;
+  optional string start_date = 9;
+  optional string end_date = 10;
+}
+
+message Comment {
+  int32 id = 1;
+  int32 author_id = 2;
+  int32 task_id = 3;
+  string content = 4;
+  string creation_date = 5;
+}
+
+message CreateProjectRequest {
+  string name = 1;
+  string description = 2;
+}
+
+message CreateProjectResponse {
+  int32 id = 1;
+}
+
+message DashboardResponse {
+  repeated Project owned_projects = 1;
+  repeated Project member_projects = 2;
+}
+
+message TasksResponse {
+  repeated Task tasks = 1;
+}
+
+message ProjectMembersResponse {
+  repeated User members = 1;
+}
+
+message ProjectMemberIdsResponse {
+  repeated int32 members = 1;
+}
+
+message UserIdResponse {
+  int32 user_id = 1;
+}
+
+message IsManagerResponse {
+  bool is_manager = 1;
+}
+
+message CreateTaskRequest {
+  int32 project_id = 1;
+  string name = 2;
+  optional string description = 3;
+  TaskPriority priority = 4;
+  TaskDifficulty difficulty = 5;
+}
+
+message AssignTaskRequest {
+  int32 assignee_id = 1;
+}
+
+message UpdateTaskStatusRequest {
+  TaskStatus status = 1;
+}
+
+message IsUserManagerResponse {
+  bool is_manager = 1;
+}

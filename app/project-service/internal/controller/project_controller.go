@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"project-service/internal/model"
+	"project-service/internal/model/dto"
 	"project-service/internal/repository"
 )
 
@@ -24,24 +25,50 @@ func NewProjectController(projectRepository repository.ProjectRepository, taskRe
 	}
 }
 
-func (controller *ProjectController) GetDashboard(ctx context.Context, userID int) (model.DashboardResponse, error) {
+func (controller *ProjectController) GetDashboard(ctx context.Context, userID int32) (dto.DashboardResponse, error) {
 	owned, err := controller.projectRepository.GetOwnedProjects(ctx, userID)
 	if err != nil {
-		return model.DashboardResponse{}, err
+		return dto.DashboardResponse{}, err
 	}
 
 	member, err := controller.projectRepository.GetMemberProjects(ctx, userID)
 	if err != nil {
-		return model.DashboardResponse{}, err
+		return dto.DashboardResponse{}, err
 	}
 
-	return model.DashboardResponse{
-		OwnedProjects:  owned,
-		MemberProjects: member,
+	ownedDto := make([]*dto.Project, len(owned))
+	for i, p := range owned {
+		ownedDto[i] = &dto.Project{
+			Id:          p.ID,
+			ManagerId:   p.ManagerID,
+			Name:        p.Name,
+			Description: p.Description,
+			Status:      dto.ProjectStatus(p.Status + 1), // adjust enum
+			StartDate:   p.StartDate.Format("2006-01-02"),
+			EndDate:     p.EndDate,
+		}
+	}
+
+	memberDto := make([]*dto.Project, len(member))
+	for i, p := range member {
+		memberDto[i] = &dto.Project{
+			Id:          p.ID,
+			ManagerId:   p.ManagerID,
+			Name:        p.Name,
+			Description: p.Description,
+			Status:      dto.ProjectStatus(p.Status + 1),
+			StartDate:   p.StartDate.Format("2006-01-02"),
+			EndDate:     p.EndDate,
+		}
+	}
+
+	return dto.DashboardResponse{
+		OwnedProjects:  ownedDto,
+		MemberProjects: memberDto,
 	}, nil
 }
 
-func (controller *ProjectController) CreateProject(ctx context.Context, userID int, project model.Project) (int, error) {
+func (controller *ProjectController) CreateProject(ctx context.Context, userID int32, project model.Project) (int, error) {
 	if project.Name == "" || project.Description == "" {
 		return 0, errors.New("name and description are required")
 	}
@@ -51,25 +78,55 @@ func (controller *ProjectController) CreateProject(ctx context.Context, userID i
 	return controller.projectRepository.CreateProject(ctx, project)
 }
 
-func (controller *ProjectController) GetProjectTasks(ctx context.Context, projectID int, userID int) ([]model.Task, error) {
+func (controller *ProjectController) GetProjectTasks(ctx context.Context, projectID int, userID int32) (dto.TasksResponse, error) {
 	// Check if user is member or owner of the project
 	isMember, err := controller.projectRepository.IsUserMemberOfProject(ctx, userID, projectID)
 	if err != nil {
-		return nil, err
+		return dto.TasksResponse{}, err
 	}
 	if !isMember {
-		return nil, errors.New("access denied")
+		return dto.TasksResponse{}, errors.New("access denied")
 	}
 
-	return controller.taskRepository.GetTasksByProjectAndAssignee(ctx, projectID, userID)
+	tasks, err := controller.taskRepository.GetTasksByProjectAndAssignee(ctx, projectID, int(userID))
+	if err != nil {
+		return dto.TasksResponse{}, err
+	}
+
+	tasksDto := make([]*dto.Task, len(tasks))
+	for i, t := range tasks {
+		var startDate, endDate *string
+		if t.StartDate != nil {
+			s := t.StartDate.Format("2006-01-02")
+			startDate = &s
+		}
+		if t.EndDate != nil {
+			s := t.EndDate.Format("2006-01-02")
+			endDate = &s
+		}
+		tasksDto[i] = &dto.Task{
+			Id:          t.ID,
+			ProjectId:   t.ProjectID,
+			AssigneeId:  t.AssigneeID,
+			Name:        t.Name,
+			Description: &t.Description,
+			Priority:    dto.TaskPriority(t.Priority),
+			Difficulty:  dto.TaskDifficulty(t.Difficulty),
+			Status:      dto.TaskStatus(t.Status),
+			StartDate:   startDate,
+			EndDate:     endDate,
+		}
+	}
+
+	return dto.TasksResponse{Tasks: tasksDto}, nil
 }
 
-func (controller *ProjectController) UpdateTaskStatus(ctx context.Context, taskID int, newStatus model.TaskStatus, userID int) error {
+func (controller *ProjectController) UpdateTaskStatus(ctx context.Context, taskID int, newStatus model.TaskStatus, userID int32) error {
 	// Optionally check if user has access to the task
 	return controller.taskRepository.UpdateTaskStatus(ctx, taskID, newStatus)
 }
 
-func (controller *ProjectController) IsUserManager(ctx context.Context, userID int, projectID int) (bool, error) {
+func (controller *ProjectController) IsUserManager(ctx context.Context, userID int32, projectID int) (bool, error) {
 	// Get project to check if user is manager
 	project, err := controller.projectRepository.GetProjectByID(ctx, projectID)
 	if err != nil {
@@ -81,11 +138,11 @@ func (controller *ProjectController) IsUserManager(ctx context.Context, userID i
 	return project.ManagerID == userID, nil
 }
 
-func (controller *ProjectController) IsUserMember(ctx context.Context, userID int, projectID int) (bool, error) {
+func (controller *ProjectController) IsUserMember(ctx context.Context, userID int32, projectID int) (bool, error) {
 	return controller.projectRepository.IsUserMemberOfProject(ctx, userID, projectID)
 }
 
-func (controller *ProjectController) GetProjectMembers(ctx context.Context, projectID int, userID int) ([]int, error) {
+func (controller *ProjectController) GetProjectMembers(ctx context.Context, projectID int, userID int32) ([]int32, error) {
 	// Check if user is member or owner of the project
 	isMember, err := controller.projectRepository.IsUserMemberOfProject(ctx, userID, projectID)
 	if err != nil {
@@ -98,25 +155,25 @@ func (controller *ProjectController) GetProjectMembers(ctx context.Context, proj
 	return controller.projectRepository.GetProjectMembers(ctx, projectID)
 }
 
-func (controller *ProjectController) GetProjectMembersWithDetails(ctx context.Context, projectID int, userID int) ([]model.MemberInfo, error) {
+func (controller *ProjectController) GetProjectMembersWithDetails(ctx context.Context, projectID int, userID int32) (dto.ProjectMembersResponse, error) {
 	// Check if user is member or owner of the project
 	isMember, err := controller.projectRepository.IsUserMemberOfProject(ctx, userID, projectID)
 	if err != nil {
-		return nil, err
+		return dto.ProjectMembersResponse{}, err
 	}
 	if !isMember {
-		return nil, errors.New("access denied")
+		return dto.ProjectMembersResponse{}, errors.New("access denied")
 	}
 
 	// Get member IDs
 	memberIDs, err := controller.projectRepository.GetProjectMembers(ctx, projectID)
 	if err != nil {
-		return nil, err
+		return dto.ProjectMembersResponse{}, err
 	}
 
 	// Deduplicate if backend returned duplicate IDs
-	seen := make(map[int]bool)
-	dedupedMemberIDs := make([]int, 0, len(memberIDs))
+	seen := make(map[int32]bool)
+	dedupedMemberIDs := make([]int32, 0, len(memberIDs))
 	for _, memberID := range memberIDs {
 		if !seen[memberID] {
 			seen[memberID] = true
@@ -125,61 +182,92 @@ func (controller *ProjectController) GetProjectMembersWithDetails(ctx context.Co
 	}
 
 	// Fetch details for each member from auth-service
-	members := make([]model.MemberInfo, 0, len(dedupedMemberIDs))
+	members := make([]*dto.User, 0, len(dedupedMemberIDs))
 	for _, memberID := range dedupedMemberIDs {
-		member, err := controller.fetchUserFromAuthService(memberID)
+		user, err := controller.fetchUserFromAuthService(int32(memberID))
 		if err != nil {
 			// Log but continue if one user fetch fails
 			continue
 		}
-		members = append(members, member)
+		members = append(members, &dto.User{
+			Id:      int32(user.ID),
+			Email:   user.Email,
+			Name:    user.Name,
+			Surname: user.Surname,
+		})
 	}
 
-	return members, nil
+	return dto.ProjectMembersResponse{Members: members}, nil
 }
 
-func (controller *ProjectController) fetchUserFromAuthService(userID int) (model.MemberInfo, error) {
+func (controller *ProjectController) fetchUserFromAuthService(userID int32) (model.User, error) {
 	if controller.authServiceURL == "" {
-		return model.MemberInfo{}, errors.New("auth service URL not configured")
+		return model.User{}, errors.New("auth service URL not configured")
 	}
 
 	url := fmt.Sprintf("%s/user-info?user_id=%d", controller.authServiceURL, userID)
 	resp, err := http.Get(url)
 	if err != nil {
-		return model.MemberInfo{}, err
+		return model.User{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return model.MemberInfo{}, fmt.Errorf("failed to fetch user info from auth service: %d", resp.StatusCode)
+		return model.User{}, fmt.Errorf("failed to fetch user info from auth service: %d", resp.StatusCode)
 	}
 
-	var member model.MemberInfo
+	var member model.User
 	if err := json.NewDecoder(resp.Body).Decode(&member); err != nil {
-		return model.MemberInfo{}, err
+		return model.User{}, err
 	}
 
 	return member, nil
 }
 
-func (controller *ProjectController) GetUserProjects(ctx context.Context, userID int) (model.DashboardResponse, error) {
+func (controller *ProjectController) GetUserProjects(ctx context.Context, userID int32) (dto.DashboardResponse, error) {
 	owned, err := controller.projectRepository.GetOwnedProjects(ctx, userID)
 	if err != nil {
-		return model.DashboardResponse{}, err
+		return dto.DashboardResponse{}, err
 	}
 
 	member, err := controller.projectRepository.GetMemberProjects(ctx, userID)
 	if err != nil {
-		return model.DashboardResponse{}, err
+		return dto.DashboardResponse{}, err
 	}
 
-	return model.DashboardResponse{
-		OwnedProjects:  owned,
-		MemberProjects: member,
+	ownedDto := make([]*dto.Project, len(owned))
+	for i, p := range owned {
+		ownedDto[i] = &dto.Project{
+			Id:          p.ID,
+			ManagerId:   p.ManagerID,
+			Name:        p.Name,
+			Description: p.Description,
+			Status:      dto.ProjectStatus(p.Status + 1),
+			StartDate:   p.StartDate.Format("2006-01-02"),
+			EndDate:     p.EndDate,
+		}
+	}
+
+	memberDto := make([]*dto.Project, len(member))
+	for i, p := range member {
+		memberDto[i] = &dto.Project{
+			Id:          p.ID,
+			ManagerId:   p.ManagerID,
+			Name:        p.Name,
+			Description: p.Description,
+			Status:      dto.ProjectStatus(p.Status + 1),
+			StartDate:   p.StartDate.Format("2006-01-02"),
+			EndDate:     p.EndDate,
+		}
+	}
+
+	return dto.DashboardResponse{
+		OwnedProjects:  ownedDto,
+		MemberProjects: memberDto,
 	}, nil
 }
 
-func (controller *ProjectController) GetProjectInfo(ctx context.Context, projectID int, userID int) (*model.Project, error) {
+func (controller *ProjectController) GetProjectInfo(ctx context.Context, projectID int, userID int32) (*dto.Project, error) {
 	// Check if user is member or owner of the project
 	isMember, err := controller.projectRepository.IsUserMemberOfProject(ctx, userID, projectID)
 	if err != nil {
@@ -189,5 +277,18 @@ func (controller *ProjectController) GetProjectInfo(ctx context.Context, project
 		return nil, errors.New("access denied")
 	}
 
-	return controller.projectRepository.GetProjectByID(ctx, projectID)
+	project, err := controller.projectRepository.GetProjectByID(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dto.Project{
+		Id:          project.ID,
+		ManagerId:   project.ManagerID,
+		Name:        project.Name,
+		Description: project.Description,
+		Status:      dto.ProjectStatus(project.Status + 1),
+		StartDate:   project.StartDate.Format("2006-01-02"),
+		EndDate:     project.EndDate,
+	}, nil
 }

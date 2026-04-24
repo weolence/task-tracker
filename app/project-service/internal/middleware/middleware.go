@@ -3,24 +3,20 @@ package middleware
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+
+	"project-service/internal/model/dto"
+
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type contextKey string
 
 const UserIDKey contextKey = "user_id"
-
-type validateTokenRequest struct {
-	Token string `json:"token"`
-}
-
-type validateTokenResponse struct {
-	UserID int `json:"user_id"`
-}
 
 func AuthMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -43,8 +39,8 @@ func AuthMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-func GetUserID(ctx context.Context) (int, bool) {
-	userID, ok := ctx.Value(UserIDKey).(int)
+func GetUserID(ctx context.Context) (int32, bool) {
+	userID, ok := ctx.Value(UserIDKey).(int32)
 	return userID, ok
 }
 
@@ -62,14 +58,14 @@ func extractToken(r *http.Request) (string, error) {
 	return authHeader[len(prefix):], nil
 }
 
-func validateTokenWithAuthService(token string) (int, error) {
+func validateTokenWithAuthService(token string) (int32, error) {
 	authServiceURL := os.Getenv("AUTH_SERVICE_URL")
 	if authServiceURL == "" {
 		authServiceURL = "http://localhost:8080"
 	}
 
-	reqBody := validateTokenRequest{Token: token}
-	jsonData, err := json.Marshal(reqBody)
+	reqBody := dto.ValidateTokenRequest{Token: token}
+	jsonData, err := protojson.Marshal(&reqBody)
 	if err != nil {
 		return 0, err
 	}
@@ -84,10 +80,16 @@ func validateTokenWithAuthService(token string) (int, error) {
 		return 0, fmt.Errorf("auth service returned status %d", resp.StatusCode)
 	}
 
-	var respBody validateTokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return 0, err
 	}
 
-	return respBody.UserID, nil
+	var respBody dto.ValidateTokenResponse
+	err = protojson.Unmarshal(body, &respBody)
+	if err != nil {
+		return 0, err
+	}
+
+	return respBody.UserId, nil
 }

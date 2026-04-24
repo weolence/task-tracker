@@ -13,8 +13,8 @@ const (
 )
 
 type Project struct {
-	ID          int           `json:"id"`
-	ManagerID   int           `json:"manager_id"`
+	ID          int32         `json:"id"`
+	ManagerID   int32         `json:"manager_id"`
 	Name        string        `json:"name"`
 	Description string        `json:"description"`
 	Status      ProjectStatus `json:"status"`
@@ -31,9 +31,4 @@ func (p Project) MarshalJSON() ([]byte, error) {
 		StartDate: p.StartDate.Format("2006-01-02"),
 		Alias:     (*Alias)(&p),
 	})
-}
-
-type DashboardResponse struct {
-	OwnedProjects  []Project `json:"owned_projects"`
-	MemberProjects []Project `json:"member_projects"`
 }

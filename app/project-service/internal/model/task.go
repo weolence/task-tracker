@@ -7,27 +7,27 @@ type TaskPriority int
 type TaskStatus int
 
 const (
-	TaskDifficultyEasy TaskDifficulty = iota
+	TaskDifficultyEasy TaskDifficulty = iota + 1
 	TaskDifficultyMedium
 	TaskDifficultyHard
 )
 
 const (
-	TaskPriorityLow TaskPriority = iota
+	TaskPriorityLow TaskPriority = iota + 1
 	TaskPriorityMedium
 	TaskPriorityHigh
 )
 
 const (
-	TaskStatusNotStarted TaskStatus = iota
+	TaskStatusNotStarted TaskStatus = iota + 1
 	TaskStatusInWork
 	TaskStatusCompleted
 )
 
 type Task struct {
-	ID          int            `json:"id"`
-	ProjectID   int            `json:"project_id"`
-	AssigneeID  *int           `json:"assignee_id"`
+	ID          int32          `json:"id"`
+	ProjectID   int32          `json:"project_id"`
+	AssigneeID  *int32         `json:"assignee_id"`
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	Priority    TaskPriority   `json:"priority"`

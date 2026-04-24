@@ -115,17 +115,18 @@
         },
       });
 
+      const text = await response.text();
       if (!response.ok) {
-        const text = await response.text();
         throw new Error(text || 'Ошибка сервера');
       }
 
-      return response.json();
+      return text ? JSON.parse(text) : null;
     };
 
-    const renderProjects = (containerId, projects) => {
+    const renderProjects = (containerId, projects = []) => {
       const container = document.getElementById(containerId);
       container.innerHTML = '';
+      projects = projects || [];
 
       if (projects.length === 0) {
         container.innerHTML = '<div class="empty-state">Пока нет проектов.</div>';
@@ -149,8 +150,8 @@
 
       try {
         const data = await apiRequest('/api/dashboard');
-        renderProjects('owned-projects', data.owned_projects);
-        renderProjects('member-projects', data.member_projects);
+        renderProjects('owned-projects', data.owned_projects || []);
+        renderProjects('member-projects', data.member_projects || []);
         document.getElementById('subtitle').textContent = 'Список проектов успешно загружен.';
       } catch (error) {
         showMessage(error.message, true);
