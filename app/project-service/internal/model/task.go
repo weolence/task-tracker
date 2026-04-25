@@ -21,7 +21,8 @@ const (
 const (
 	TaskStatusNotStarted TaskStatus = iota + 1
 	TaskStatusInWork
-	TaskStatusCompleted
+	TaskStatusOnReview
+	TaskStatusClosed
 )
 
 type Task struct {

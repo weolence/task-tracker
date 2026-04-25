@@ -18,6 +18,9 @@ import (
 	"auth-service/internal/middleware"
 	"auth-service/internal/model"
 	"auth-service/internal/repository"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 //go:embed static/index.html
@@ -183,8 +186,8 @@ func runInteractiveRegister(authController *controller.AuthController) {
 	reader := bufio.NewReader(os.Stdin)
 	email := askValue(reader, "Email")
 	password := askValue(reader, "Password")
-	name := askValue(reader, "Name")
-	surname := askValue(reader, "Surname")
+	name := cases.Title(language.English, cases.Compact).String(askValue(reader, "Name"))
+	surname := cases.Title(language.English, cases.Compact).String(askValue(reader, "Surname"))
 
 	user := model.User{
 		Email:    strings.TrimSpace(email),

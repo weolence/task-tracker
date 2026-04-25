@@ -144,6 +144,10 @@ func (authController *AuthController) GetUser(ctx context.Context, userID int) (
 	return authController.userRepository.GetUserByID(ctx, userID)
 }
 
+func (authController *AuthController) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
+	return authController.userRepository.GetUserByEmail(ctx, email)
+}
+
 func (authController *AuthController) ChangeRole(ctx context.Context, email string, role string) error {
 	if email == "" || !isValidRole(role) {
 		return errs.ErrInvalidCredentials

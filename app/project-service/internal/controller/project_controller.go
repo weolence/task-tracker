@@ -205,11 +205,21 @@ func (controller *ProjectController) GetProjectMembersWithDetails(ctx context.Co
 }
 
 func (controller *ProjectController) fetchUserFromAuthService(userID int32) (model.User, error) {
+	req := dto.GetUserRequest{UserId: &userID}
+	return controller.fetchUserByRequest(req)
+}
+
+func (controller *ProjectController) fetchUserFromAuthServiceByEmail(email string) (model.User, error) {
+	req := dto.GetUserRequest{Email: &email}
+	return controller.fetchUserByRequest(req)
+}
+
+func (controller *ProjectController) fetchUserByRequest(request dto.GetUserRequest) (model.User, error) {
 	if controller.authServiceURL == "" {
 		return model.User{}, errors.New("auth service URL not configured")
 	}
 
-	reqBody, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&dto.GetUserRequest{UserId: &userID})
+	reqBody, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&request)
 	if err != nil {
 		return model.User{}, err
 	}
@@ -240,6 +250,48 @@ func (controller *ProjectController) fetchUserFromAuthService(userID int32) (mod
 		Name:    member.Name,
 		Surname: member.Surname,
 		Role:    member.Role,
+	}, nil
+}
+
+func (controller *ProjectController) AddProjectMember(ctx context.Context, projectID int, managerID int32, email string) (*dto.User, error) {
+	if email == "" {
+		return nil, errors.New("email is required")
+	}
+
+	isManager, err := controller.IsUserManager(ctx, managerID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if !isManager {
+		return nil, errors.New("access denied")
+	}
+
+	project, err := controller.projectRepository.GetProjectByID(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, errors.New("project not found")
+	}
+
+	user, err := controller.fetchUserFromAuthServiceByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	if int32(user.ID) == project.ManagerID {
+		return nil, errors.New("manager is already part of the project")
+	}
+
+	if err := controller.projectRepository.AddProjectMember(ctx, projectID, int32(user.ID)); err != nil {
+		return nil, err
+	}
+
+	return &dto.User{
+		Id:      int32(user.ID),
+		Email:   user.Email,
+		Name:    user.Name,
+		Surname: user.Surname,
+		Role:    user.Role,
 	}, nil
 }
 

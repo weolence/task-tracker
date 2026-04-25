@@ -94,7 +94,49 @@ func (handler *TaskHandler) GetAllProjectTasks(writer http.ResponseWriter, reque
 	writer.Write(bytes)
 }
 
+func (handler *TaskHandler) GetClosedProjectTasks(writer http.ResponseWriter, request *http.Request) {
+	userID, ok := middleware.GetUserID(request.Context())
+	if !ok {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := request.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(writer, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+
+	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, projectID)
+	if err != nil || !isManager {
+		http.Error(writer, "access denied", http.StatusForbidden)
+		return
+	}
+
+	resp, err := handler.taskController.GetClosedTasksByProject(request.Context(), projectID)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&resp)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Write(bytes)
+}
+
 func (handler *TaskHandler) UpdateTaskStatus(writer http.ResponseWriter, request *http.Request) {
+	userID, ok := middleware.GetUserID(request.Context())
+	if !ok {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	path := request.URL.Path
 	parts := strings.Split(path, "/")
 	if len(parts) < 5 || parts[4] != "status" {
@@ -122,7 +164,77 @@ func (handler *TaskHandler) UpdateTaskStatus(writer http.ResponseWriter, request
 		return
 	}
 
+	task, err := handler.taskController.GetTaskByID(request.Context(), taskID)
+	if err != nil || task == nil {
+		http.Error(writer, "task not found", http.StatusNotFound)
+		return
+	}
+
+	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, int(task.ProjectID))
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !isManager {
+		if task.AssigneeID == nil || *task.AssigneeID != userID {
+			http.Error(writer, "access denied", http.StatusForbidden)
+			return
+		}
+	}
+
+	if model.TaskStatus(updateReq.Status) == model.TaskStatusClosed {
+		http.Error(writer, "closed status can only be set by manager action", http.StatusBadRequest)
+		return
+	}
+
 	err = handler.taskController.UpdateTaskStatus(request.Context(), taskID, model.TaskStatus(updateReq.Status))
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writer.WriteHeader(http.StatusOK)
+}
+
+func (handler *TaskHandler) CloseTask(writer http.ResponseWriter, request *http.Request) {
+	userID, ok := middleware.GetUserID(request.Context())
+	if !ok {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	path := request.URL.Path
+	parts := strings.Split(path, "/")
+	if len(parts) < 5 || parts[4] != "close" {
+		http.Error(writer, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	taskID, err := strconv.Atoi(parts[3])
+	if err != nil {
+		http.Error(writer, "invalid task id", http.StatusBadRequest)
+		return
+	}
+
+	task, err := handler.taskController.GetTaskByID(request.Context(), taskID)
+	if err != nil || task == nil {
+		http.Error(writer, "task not found", http.StatusNotFound)
+		return
+	}
+
+	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, int(task.ProjectID))
+	if err != nil || !isManager {
+		http.Error(writer, "access denied", http.StatusForbidden)
+		return
+	}
+
+	if task.Status != model.TaskStatusOnReview {
+		http.Error(writer, "task is not ready for closing", http.StatusBadRequest)
+		return
+	}
+
+	err = handler.taskController.CloseTask(request.Context(), taskID)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
@@ -248,7 +360,60 @@ func (handler *TaskHandler) AssignTask(writer http.ResponseWriter, request *http
 		return
 	}
 
+	if isManager {
+		targetIsMember, err := handler.projectController.IsUserMember(request.Context(), assignReq.AssigneeId, int(task.ProjectID))
+		if err != nil {
+			http.Error(writer, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !targetIsMember {
+			http.Error(writer, "selected user is not a project member", http.StatusBadRequest)
+			return
+		}
+	}
+
 	err = handler.taskController.AssignTask(request.Context(), taskID, int(assignReq.AssigneeId))
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writer.WriteHeader(http.StatusOK)
+}
+
+func (handler *TaskHandler) UnassignTask(writer http.ResponseWriter, request *http.Request) {
+	userID, ok := middleware.GetUserID(request.Context())
+	if !ok {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	path := request.URL.Path
+	parts := strings.Split(path, "/")
+	if len(parts) < 5 || parts[4] != "unassign" {
+		http.Error(writer, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	taskID, err := strconv.Atoi(parts[3])
+	if err != nil {
+		http.Error(writer, "invalid task id", http.StatusBadRequest)
+		return
+	}
+
+	task, err := handler.taskController.GetTaskByID(request.Context(), taskID)
+	if err != nil || task == nil {
+		http.Error(writer, "task not found", http.StatusNotFound)
+		return
+	}
+
+	isManager, err := handler.projectController.IsUserManager(request.Context(), userID, int(task.ProjectID))
+	if err != nil || !isManager {
+		http.Error(writer, "access denied", http.StatusForbidden)
+		return
+	}
+
+	err = handler.taskController.UnassignTask(request.Context(), taskID)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return

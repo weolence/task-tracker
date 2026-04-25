@@ -7,20 +7,21 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ProjectRepository struct {
-	Conn *pgx.Conn
+	Conn *pgxpool.Pool
 }
 
 func NewProjectRepository(ctx context.Context, dbLink string) (*ProjectRepository, error) {
-	conn, err := pgx.Connect(ctx, dbLink)
+	conn, err := pgxpool.New(ctx, dbLink)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := conn.Ping(ctx); err != nil {
-		conn.Close(ctx)
+		conn.Close()
 		return nil, err
 	}
 
@@ -277,6 +278,15 @@ func (projectRepository *ProjectRepository) GetProjectMembers(ctx context.Contex
 	}
 
 	return members, nil
+}
+
+func (projectRepository *ProjectRepository) AddProjectMember(ctx context.Context, projectID int, userID int32) error {
+	_, err := projectRepository.Conn.Exec(ctx, `
+		INSERT INTO project_members (project_id, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (project_id, user_id) DO NOTHING
+	`, projectID, userID)
+	return err
 }
 
 func (projectRepository *ProjectRepository) UpdateProject(ctx context.Context, project model.Project) error {

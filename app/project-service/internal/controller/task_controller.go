@@ -85,6 +85,40 @@ func (controller *TaskController) GetAllTasksByProject(ctx context.Context, proj
 	return dto.TasksResponse{Tasks: tasksDto}, nil
 }
 
+func (controller *TaskController) GetClosedTasksByProject(ctx context.Context, projectID int) (dto.TasksResponse, error) {
+	tasks, err := controller.taskRepository.GetClosedTasksByProject(ctx, projectID)
+	if err != nil {
+		return dto.TasksResponse{}, err
+	}
+
+	tasksDto := make([]*dto.Task, len(tasks))
+	for i, t := range tasks {
+		var startDate, endDate *string
+		if t.StartDate != nil {
+			s := (*t.StartDate).Format("2006-01-02")
+			startDate = &s
+		}
+		if t.EndDate != nil {
+			s := (*t.EndDate).Format("2006-01-02")
+			endDate = &s
+		}
+		tasksDto[i] = &dto.Task{
+			Id:          t.ID,
+			ProjectId:   t.ProjectID,
+			AssigneeId:  t.AssigneeID,
+			Name:        t.Name,
+			Description: &t.Description,
+			Priority:    dto.TaskPriority(t.Priority),
+			Difficulty:  dto.TaskDifficulty(t.Difficulty),
+			Status:      dto.TaskStatus(t.Status),
+			StartDate:   startDate,
+			EndDate:     endDate,
+		}
+	}
+
+	return dto.TasksResponse{Tasks: tasksDto}, nil
+}
+
 func (controller *TaskController) UpdateTaskStatus(ctx context.Context, taskID int, status model.TaskStatus) error {
 	return controller.taskRepository.UpdateTaskStatus(ctx, taskID, status)
 }
@@ -98,8 +132,16 @@ func (controller *TaskController) AssignTask(ctx context.Context, taskID int, as
 	return controller.taskRepository.AssignTask(ctx, taskID, assigneeID)
 }
 
+func (controller *TaskController) UnassignTask(ctx context.Context, taskID int) error {
+	return controller.taskRepository.UnassignTask(ctx, taskID)
+}
+
 func (controller *TaskController) DeleteTask(ctx context.Context, taskID int) error {
 	return controller.taskRepository.DeleteTask(ctx, taskID)
+}
+
+func (controller *TaskController) CloseTask(ctx context.Context, taskID int) error {
+	return controller.taskRepository.CloseTask(ctx, taskID)
 }
 
 func (controller *TaskController) UpdateTask(ctx context.Context, task model.Task) error {

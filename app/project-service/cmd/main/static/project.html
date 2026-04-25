@@ -13,9 +13,19 @@
     .columns { display: flex; gap: 24px; }
     .column { flex: 1; background: #f8fafc; padding: 16px; border-radius: 8px; min-height: 400px; }
     .column h2 { margin-top: 0; color: #374151; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .section-header h2 { margin: 0; }
+    .icon-btn { width: 40px; height: 40px; border: 1px solid #cbd5e1; border-radius: 999px; background: #fff; color: #2563eb; font-size: 24px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 6px rgba(37,99,235,0.08); transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease; }
+    .icon-btn:hover { background: #eff6ff; box-shadow: 0 6px 14px rgba(37,99,235,0.16); transform: translateY(-1px); }
+    .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
     .task { background: #fff; padding: 12px; margin-bottom: 8px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: move; }
     .task h3 { margin: 0 0 4px; font-size: 14px; }
     .task p { margin: 0; font-size: 12px; color: #6b7280; }
+    .entity-meta { margin-top: 8px; font-size: 12px; color: #94a3b8; letter-spacing: 0.02em; }
+    .entity-meta.inline { margin-top: 0; }
+    .entity-meta.compact { font-size: 11px; }
+    .project-heading { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+    .project-description { font-weight: normal; color: #666; font-size: 0.95rem; }
     .priority-high { border-left: 4px solid #ef4444; }
     .priority-medium { border-left: 4px solid #f59e0b; }
     .priority-low { border-left: 4px solid #10b981; }
@@ -38,16 +48,30 @@
     .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
     .btn-primary { background: #2563eb; color: white; }
     .btn-secondary { background: #6b7280; color: white; }
+    .btn-danger { background: #dc2626; color: white; }
     .task-detail { margin-bottom: 10px; }
     .task-detail strong { display: inline-block; width: 120px; }
+    .task-summary { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+    .task-description-block { color: #666; font-size: 0.95rem; line-height: 1.5; }
+    .task-properties { margin-top: 16px; }
+    .task-actions { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+    .task-actions .btn { min-width: 140px; }
+    .member-search { margin-bottom: 16px; }
+    .member-search input { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
     .assign-list { margin-top: 15px; }
-    .assign-list ul { list-style: none; padding: 0; }
-    .assign-list li { padding: 5px 0; cursor: pointer; }
+    .assign-list ul { list-style: none; padding: 0; margin: 0; max-height: 320px; overflow-y: auto; }
+    .assign-list li { padding: 10px 12px; cursor: pointer; border-radius: 6px; margin-bottom: 8px; background: #f8fafc; }
     .assign-list li:hover { background: #f3f4f6; }
+    .assign-list .member-option-name { display: block; color: #111827; }
+    .assign-list .member-option-meta { display: block; margin-top: 4px; font-size: 11px; color: #9ca3af; }
+    .assign-empty { color: #6b7280; font-size: 14px; }
     .member-name { cursor: pointer; color: #2563eb; text-decoration: underline; }
     .member-name:hover { color: #1d47a7; }
     .members-ul { list-style: none; padding: 0; }
     .members-ul li { padding: 8px 0; }
+    .members-section { margin-bottom: 20px; }
+    .members-section:last-child { margin-bottom: 0; }
+    .members-section h3 { margin: 0 0 10px; color: #374151; font-size: 16px; }
     .profile-modal-content { max-width: 600px; }
     .profile-section { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #e5e7eb; }
     .profile-section:last-child { border-bottom: none; }
@@ -58,6 +82,17 @@
     .projects-list .project-name:hover { color: #1d47a7; }
     .projects-list .project-unavailable { color: #9ca3af; cursor: not-allowed; opacity: 0.6; }
     .projects-list .project-unavailable:hover { color: #9ca3af; text-decoration: none; }
+    .projects-list .project-meta { display: block; margin-top: 4px; font-size: 11px; color: #9ca3af; }
+    .section-note { color: #6b7280; margin: 0 0 12px; }
+    .pool-section { margin-bottom: 24px; }
+    .secondary-pool { background: #f8fafc; border-radius: 12px; padding: 16px; }
+    .secondary-pool .tasks { display: flex; flex-wrap: wrap; gap: 8px; }
+    .toggle-closed-btn { margin-top: 12px; }
+    @media (max-width: 900px) {
+      body { padding: 16px; }
+      .container { padding: 18px; }
+      .columns { flex-direction: column; }
+    }
   </style>
 </head>
 <body>
@@ -68,12 +103,18 @@
 
     <div id="manager-view" style="display:none;">
       <section style="margin-bottom: 24px;">
-        <h2>Участники проекта</h2>
+        <div class="section-header">
+          <h2>Состав проекта</h2>
+          <button id="invite-member-btn" class="icon-btn" type="button" aria-label="Пригласить участника" title="Пригласить участника">+</button>
+        </div>
         <div id="members-list"></div>
       </section>
 
-      <section style="margin-bottom: 24px;">
-        <h2>Пул задач</h2>
+      <section class="pool-section">
+        <div class="section-header">
+          <h2>Пул задач</h2>
+          <button id="open-create-task-btn" class="icon-btn" type="button" aria-label="Создать задачу" title="Создать задачу">+</button>
+        </div>
         <div class="sort-controls">
           <select id="sort-pool">
             <option value="status">По статусу</option>
@@ -83,13 +124,22 @@
         </div>
         <div id="task-pool" class="tasks" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
       </section>
-    </div>
 
-    <section style="margin-bottom: 24px;">
-      <h2>Создать задачу</h2>
-      <p id="create-note" style="display:none; color:#6b7280; margin-bottom: 12px;">Создание задач доступно только менеджеру проекта.</p>
-      <button id="create-task-btn" class="btn btn-primary">Создать задачу</button>
-    </section>
+      <section class="pool-section secondary-pool">
+        <div class="section-header">
+          <h2>Задачи на рассмотрение</h2>
+        </div>
+        <div id="review-task-pool" class="tasks"></div>
+        <button id="toggle-closed-tasks-btn" type="button" class="btn btn-secondary toggle-closed-btn">Показать закрытые задачи</button>
+      </section>
+
+      <section id="closed-tasks-section" class="pool-section secondary-pool" style="display:none;">
+        <div class="section-header">
+          <h2>Закрытые задачи</h2>
+        </div>
+        <div id="closed-task-pool" class="tasks"></div>
+      </section>
+    </div>
 
     <div class="columns">
       <div class="column" data-status="0">
@@ -113,7 +163,7 @@
         <div id="in-work-tasks" class="tasks"></div>
       </div>
       <div class="column" data-status="2">
-        <h2>Выполнено</h2>
+        <h2 id="final-column-title">На проверке</h2>
         <div class="sort-controls">
           <select id="sort-completed">
             <option value="priority">По приоритету</option>
@@ -169,10 +219,37 @@
       <div id="task-detail-content">
         <!-- Task details will be populated here -->
       </div>
-      <div id="assign-section" class="assign-list" style="display:none;">
-        <h3>Назначить участнику:</h3>
-        <ul id="assign-list"></ul>
+    </div>
+  </div>
+
+  <!-- Modal for assigning task -->
+  <div id="assign-modal" class="modal">
+    <div class="modal-content">
+      <span class="close" id="assign-modal-close">&times;</span>
+      <h2>Назначить участнику</h2>
+      <div class="member-search">
+        <input id="assign-search-input" type="text" placeholder="Поиск по имени и фамилии" />
       </div>
+      <div class="assign-list">
+        <ul id="assign-list"></ul>
+        <p id="assign-empty" class="assign-empty" style="display:none;">Ничего не найдено.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="invite-member-modal" class="modal">
+    <div class="modal-content">
+      <span class="close" id="invite-modal-close">&times;</span>
+      <h2>Пригласить участника</h2>
+      <p class="section-note">Введите email пользователя, которого нужно добавить в проект.</p>
+      <form id="invite-member-form">
+        <div class="form-group">
+          <label for="invite-member-email">Email:</label>
+          <input id="invite-member-email" type="email" required />
+        </div>
+        <button type="submit" class="btn btn-primary">Пригласить</button>
+        <button type="button" class="btn btn-secondary" id="invite-modal-cancel">Отмена</button>
+      </form>
     </div>
   </div>
 
@@ -236,6 +313,7 @@
       TASK_STATUS_IN_WORK: 1,
       TASK_STATUS_COMPLETED: 2,
     };
+    const STATUS_LABELS = ['К выполнению', 'В работе', 'На проверке', 'Закрыта'];
 
     const normalizeEnumValue = (value, map) => {
       if (typeof value === 'number') {
@@ -258,6 +336,10 @@
     let isManager = false;
     let members = [];
     let memberDetails = {};
+    let projectManagerId = null;
+    let selectedTask = null;
+    let projectInfo = null;
+    let closedTasksVisible = false;
 
     const getUserId = async () => {
       try {
@@ -273,8 +355,6 @@
         const data = await apiRequest(`/api/is-manager?project_id=${projectId}`);
         isManager = data && data.is_manager;
         document.getElementById('manager-view').style.display = isManager ? 'block' : 'none';
-        document.getElementById('create-task-form').style.display = isManager ? 'block' : 'none';
-        document.getElementById('create-note').style.display = isManager ? 'none' : 'block';
       } catch (error) {
         showMessage(error.message, true);
       }
@@ -311,6 +391,24 @@
       }
     };
 
+    const getMemberFullName = (memberId, fallback = 'Не назначена') => {
+      const member = memberDetails[memberId];
+      if (!member) {
+        return fallback;
+      }
+      return `${member.surname} ${member.name}`;
+    };
+
+    const escapeHtml = (value) => String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+
+    const isTaskClosed = (task) => task.status === 3;
+    const getTaskStatusLabel = (task) => STATUS_LABELS[task.status] || 'Неизвестно';
+
     const renderTask = (task, draggable = true) => {
       const taskEl = document.createElement('div');
       taskEl.className = 'task';
@@ -341,14 +439,24 @@
 
       taskEl.classList.add(priorityClass, difficultyClass);
 
-      const statusText = ['К выполнению', 'В работе', 'Выполнено'][task.status] || 'Неизвестно';
-      const assigneeText = task.assignee_id ? 'Назначена' : 'Не назначена';
+      const statusText = getTaskStatusLabel(task);
+      const assigneeHtml = task.assignee_id != null
+        ? `<span class="member-name task-assignee-link" data-user-id="${task.assignee_id}">${escapeHtml(getMemberFullName(task.assignee_id, 'Пользователь'))}</span>`
+        : 'Не назначена';
       taskEl.innerHTML = `
         <h3>${task.name}</h3>
         <p>Статус: ${statusText}</p>
         <p>Приоритет: ${['Низкий', 'Средний', 'Высокий'][task.priority]}, Сложность: ${['Легкая', 'Средняя', 'Тяжелая'][task.difficulty]}</p>
-        <p>${assigneeText}</p>
+        <p>Назначена: ${assigneeHtml}</p>
       `;
+      const assigneeLink = taskEl.querySelector('.task-assignee-link');
+      if (assigneeLink) {
+        assigneeLink.addEventListener('click', (event) => {
+          event.stopPropagation();
+          showUserProfile(task.assignee_id);
+        });
+      }
+      taskEl.addEventListener('click', () => showTaskDetail(task));
 
       return taskEl;
     };
@@ -361,15 +469,29 @@
       // Load project info
       try {
         const project = await apiRequest(`/api/project-info?project_id=${projectId}`);
-        document.getElementById('project-title').innerHTML = `${project.name}<br><small style="font-weight: normal; color: #666;">${project.description}</small>`;
+        projectInfo = project;
+        projectManagerId = project.manager_id;
+        document.getElementById('project-title').innerHTML = `
+          <div class="project-heading">
+            <span>${project.name}</span>
+            <span class="project-description">${project.description}</span>
+            <span class="entity-meta inline">ID проекта: ${project.id}</span>
+          </div>
+        `;
       } catch (error) {
         console.error('Failed to load project info:', error);
       }
 
+      await loadMembers();
+
       try {
         let taskResponse;
+        let closedTaskResponse = { tasks: [] };
         if (isManager) {
-          taskResponse = await apiRequest(`/api/project-tasks?project_id=${projectId}`);
+          [taskResponse, closedTaskResponse] = await Promise.all([
+            apiRequest(`/api/project-tasks?project_id=${projectId}`),
+            apiRequest(`/api/closed-project-tasks?project_id=${projectId}`),
+          ]);
         } else {
           taskResponse = await apiRequest(`/api/my-tasks?project_id=${projectId}`);
         }
@@ -377,6 +499,11 @@
         const tasks = (Array.isArray(taskResponse)
           ? taskResponse
           : taskResponse.tasks || []).map(normalizeTask);
+        const closedTasks = isManager
+          ? (Array.isArray(closedTaskResponse)
+            ? closedTaskResponse
+            : closedTaskResponse.tasks || []).map(normalizeTask)
+          : [];
 
         const columns = {
           0: document.getElementById('not-started-tasks'),
@@ -387,15 +514,16 @@
         Object.values(columns).forEach(col => col.innerHTML = '');
 
         if (isManager) {
-          const assignedTasks = tasks.filter(task => task.assignee_id != null);
-          assignedTasks.forEach(task => {
+          const managerTasks = tasks.filter(task => task.assignee_id === userId);
+          managerTasks.forEach(task => {
             const taskEl = renderTask(task);
             columns[task.status].appendChild(taskEl);
           });
 
-          const poolTasks = tasks.filter(task => task.status !== 2);
-          renderTaskPool(poolTasks);
-          await loadMembers();
+          renderTaskPool(tasks);
+          renderReviewTaskPool(tasks);
+          renderClosedTaskPool(closedTasks);
+          syncClosedTasksVisibility();
         } else {
           tasks.forEach(task => {
             const taskEl = renderTask(task);
@@ -418,9 +546,46 @@
       poolContainer.innerHTML = '';
       tasks.forEach(task => {
         const taskEl = renderTask(task, false);
-        taskEl.addEventListener('click', () => showTaskDetail(task));
         poolContainer.appendChild(taskEl);
       });
+    };
+
+    const renderReviewTaskPool = (tasks) => {
+      const reviewContainer = document.getElementById('review-task-pool');
+      reviewContainer.innerHTML = '';
+
+      const reviewTasks = tasks.filter(task => task.status === 2);
+      if (reviewTasks.length === 0) {
+        reviewContainer.innerHTML = '<p class="section-note">Нет задач на рассмотрении.</p>';
+        return;
+      }
+
+      reviewTasks.forEach(task => {
+        const taskEl = renderTask(task, false);
+        reviewContainer.appendChild(taskEl);
+      });
+    };
+
+    const renderClosedTaskPool = (tasks) => {
+      const closedContainer = document.getElementById('closed-task-pool');
+      closedContainer.innerHTML = '';
+
+      if (tasks.length === 0) {
+        closedContainer.innerHTML = '<p class="section-note">Закрытых задач пока нет.</p>';
+        return;
+      }
+
+      tasks.forEach(task => {
+        const taskEl = renderTask(task, false);
+        closedContainer.appendChild(taskEl);
+      });
+    };
+
+    const syncClosedTasksVisibility = () => {
+      const closedSection = document.getElementById('closed-tasks-section');
+      const toggleBtn = document.getElementById('toggle-closed-tasks-btn');
+      closedSection.style.display = closedTasksVisible ? 'block' : 'none';
+      toggleBtn.textContent = closedTasksVisible ? 'Скрыть закрытые задачи' : 'Показать закрытые задачи';
     };
 
     const loadMembers = async () => {
@@ -441,9 +606,33 @@
             memberDetails[member.id] = member;
             members.push(member.id);
           });
-          membersList.innerHTML = '<ul class="members-ul">' + 
-            uniqueMembers.map(m => `<li><span class="member-name" onclick="showUserProfile(${m.id})">${m.name} ${m.surname}</span></li>`).join('') + 
-            '</ul>';
+
+          const manager = uniqueMembers.find(member => member.id === projectManagerId);
+          const otherMembers = uniqueMembers.filter(member => member.id !== projectManagerId);
+
+          let html = '';
+
+          if (manager) {
+            html += `
+              <div class="members-section">
+                <h3>Менеджер проекта</h3>
+                <ul class="members-ul">
+                  <li><span class="member-name" onclick="showUserProfile(${manager.id})">${manager.name} ${manager.surname}</span></li>
+                </ul>
+              </div>
+            `;
+          }
+
+          html += `
+            <div class="members-section">
+              <h3>Участники проекта</h3>
+              ${otherMembers.length > 0
+                ? `<ul class="members-ul">${otherMembers.map(member => `<li><span class="member-name" onclick="showUserProfile(${member.id})">${member.name} ${member.surname}</span></li>`).join('')}</ul>`
+                : '<p>Нет участников</p>'}
+            </div>
+          `;
+
+          membersList.innerHTML = html;
         } else {
           membersList.innerHTML = '<p>Нет участников</p>';
         }
@@ -465,6 +654,10 @@
     };
 
     const showCreateTaskModal = () => {
+      if (!isManager) {
+        showMessage('Создание задач доступно только менеджеру.', true);
+        return;
+      }
       document.getElementById('create-task-modal').style.display = 'block';
     };
 
@@ -473,29 +666,107 @@
       document.getElementById('create-task-form').reset();
     };
 
+    const renderAssignList = (searchValue = '') => {
+      const assignList = document.getElementById('assign-list');
+      const assignEmpty = document.getElementById('assign-empty');
+      const normalizedQuery = searchValue.trim().toLowerCase();
+
+      const filteredMembers = members.filter(id => {
+        const member = memberDetails[id];
+        if (!member) {
+          return false;
+        }
+        const fullName = `${member.name} ${member.surname}`.toLowerCase();
+        return !normalizedQuery || fullName.includes(normalizedQuery);
+      });
+
+      if (filteredMembers.length === 0) {
+        assignList.innerHTML = '';
+        assignEmpty.style.display = 'block';
+        return;
+      }
+
+      assignEmpty.style.display = 'none';
+      assignList.innerHTML = filteredMembers.map(id => {
+        const member = memberDetails[id];
+        return `
+          <li data-user-id="${id}" onclick="assignTaskToSelected(${id})">
+            <span class="member-option-name">${member.name} ${member.surname}</span>
+            <span class="member-option-meta">ID пользователя: ${member.id}</span>
+          </li>
+        `;
+      }).join('');
+    };
+
+    const showAssignModal = () => {
+      if (!selectedTask || !isManager) {
+        return;
+      }
+      const searchInput = document.getElementById('assign-search-input');
+      searchInput.value = '';
+      renderAssignList();
+      document.getElementById('assign-modal').style.display = 'block';
+      searchInput.focus();
+    };
+
+    const hideAssignModal = () => {
+      document.getElementById('assign-modal').style.display = 'none';
+    };
+
+    const showInviteMemberModal = () => {
+      if (!isManager) {
+        showMessage('Приглашение участников доступно только менеджеру.', true);
+        return;
+      }
+      document.getElementById('invite-member-modal').style.display = 'block';
+      document.getElementById('invite-member-email').focus();
+    };
+
+    const hideInviteMemberModal = () => {
+      document.getElementById('invite-member-modal').style.display = 'none';
+      document.getElementById('invite-member-form').reset();
+    };
+
     const showTaskDetail = (task) => {
+      selectedTask = task;
       document.getElementById('task-detail-title').textContent = task.name;
       const content = document.getElementById('task-detail-content');
       const startDate = task.start_date ? new Date(task.start_date).toLocaleDateString() : 'Не начата';
+      const canManageTask = isManager;
+      const isClosedTask = isTaskClosed(task);
+      const canCloseTask = canManageTask && !isTaskClosed(task) && task.status === 2;
+      const closedDate = task.end_date ? new Date(task.end_date).toLocaleDateString() : 'Не закрыта';
+      const assigneeHtml = task.assignee_id != null
+        ? `<span class="member-name detail-assignee-link" data-user-id="${task.assignee_id}">${escapeHtml(getMemberFullName(task.assignee_id, 'Пользователь'))}</span>`
+        : 'Не назначена';
       content.innerHTML = `
-        <div class="task-detail"><strong>Описание:</strong> ${task.description || 'Нет описания'}</div>
-        <div class="task-detail"><strong>Приоритет:</strong> ${['Низкий', 'Средний', 'Высокий'][task.priority]}</div>
-        <div class="task-detail"><strong>Сложность:</strong> ${['Легкая', 'Средняя', 'Тяжелая'][task.difficulty]}</div>
-        <div class="task-detail"><strong>Статус:</strong> ${['К выполнению', 'В работе', 'Выполнено'][task.status]}</div>
-        <div class="task-detail"><strong>Дата начала:</strong> ${startDate}</div>
+        <div class="task-summary">
+          <div class="task-description-block">${task.description || 'Нет описания'}</div>
+          <div class="entity-meta inline">ID задачи: ${task.id}</div>
+        </div>
+        <div class="task-properties">
+          <div class="task-detail"><strong>Назначена:</strong> ${assigneeHtml}</div>
+          <div class="task-detail"><strong>Приоритет:</strong> ${['Низкий', 'Средний', 'Высокий'][task.priority]}</div>
+          <div class="task-detail"><strong>Сложность:</strong> ${['Легкая', 'Средняя', 'Тяжелая'][task.difficulty]}</div>
+          <div class="task-detail"><strong>Статус:</strong> ${getTaskStatusLabel(task)}</div>
+          <div class="task-detail"><strong>Дата начала:</strong> ${startDate}</div>
+          <div class="task-detail"><strong>Дата закрытия:</strong> ${closedDate}</div>
+        </div>
+        ${canManageTask ? `
+          <div class="task-actions">
+            <button type="button" class="btn btn-danger" onclick="deleteSelectedTask()">Удалить</button>
+            ${!isClosedTask ? '<button type="button" class="btn btn-primary" onclick="showAssignModal()">Назначить</button>' : ''}
+            ${!isClosedTask ? '<button type="button" class="btn btn-secondary" onclick="unassignSelectedTask()">Отозвать</button>' : ''}
+            ${canCloseTask ? '<button type="button" class="btn btn-primary" onclick="closeSelectedTask()">Закрыть задачу</button>' : ''}
+          </div>
+        ` : ''}
       `;
-
-      const assignSection = document.getElementById('assign-section');
-      const assignList = document.getElementById('assign-list');
-      if (isManager) {
-        assignSection.style.display = 'block';
-        assignList.innerHTML = members.map(id => {
-          const member = memberDetails[id];
-          const memberName = member ? `${member.name} ${member.surname}` : `Пользователь ${id}`;
-          return `<li data-user-id="${id}" onclick="assignTask(${task.id}, ${id})">${memberName}</li>`;
-        }).join('');
-      } else {
-        assignSection.style.display = 'none';
+      const detailAssigneeLink = content.querySelector('.detail-assignee-link');
+      if (detailAssigneeLink) {
+        detailAssigneeLink.addEventListener('click', (event) => {
+          event.stopPropagation();
+          showUserProfile(task.assignee_id);
+        });
       }
 
       document.getElementById('task-detail-modal').style.display = 'block';
@@ -505,6 +776,30 @@
       document.getElementById('task-detail-modal').style.display = 'none';
     };
 
+    const deleteSelectedTask = async () => {
+      if (!selectedTask || !isManager) {
+        return;
+      }
+
+      const confirmed = window.confirm(`Удалить задачу "${selectedTask.name}"?`);
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/tasks/${selectedTask.id}`, {
+          method: 'DELETE',
+        });
+        hideTaskDetailModal();
+        hideAssignModal();
+        selectedTask = null;
+        await loadTasks();
+        showMessage('Задача удалена.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
     const assignTask = async (taskId, userId) => {
       try {
         await apiRequest(`/api/tasks/${taskId}/assign`, {
@@ -512,14 +807,63 @@
           body: JSON.stringify({ assignee_id: userId }),
         });
         hideTaskDetailModal();
-        loadTasks();
+        await loadTasks();
         showMessage('Задача назначена.', false);
       } catch (error) {
         showMessage(error.message, true);
       }
     };
 
-    window.assignTask = assignTask;
+    const unassignSelectedTask = async () => {
+      if (!selectedTask || !isManager) {
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/tasks/${selectedTask.id}/unassign`, {
+          method: 'PUT',
+        });
+        hideTaskDetailModal();
+        hideAssignModal();
+        selectedTask = null;
+        await loadTasks();
+        showMessage('Задача возвращена в пул.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
+    const closeSelectedTask = async () => {
+      if (!selectedTask || !isManager || isTaskClosed(selectedTask) || selectedTask.status !== 2) {
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/tasks/${selectedTask.id}/close`, {
+          method: 'PUT',
+        });
+        hideTaskDetailModal();
+        selectedTask = null;
+        await loadTasks();
+        showMessage('Задача закрыта.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
+    const assignTaskToSelected = async (assigneeId) => {
+      if (!selectedTask) {
+        return;
+      }
+      await assignTask(selectedTask.id, assigneeId);
+      hideAssignModal();
+    };
+
+    window.assignTaskToSelected = assignTaskToSelected;
+    window.deleteSelectedTask = deleteSelectedTask;
+    window.showAssignModal = showAssignModal;
+    window.unassignSelectedTask = unassignSelectedTask;
+    window.closeSelectedTask = closeSelectedTask;
 
     const showUserProfile = async (userId) => {
       try {
@@ -551,6 +895,7 @@
         
         profileContent.innerHTML = `
           <div class="profile-section">
+            <p class="entity-meta inline compact">ID пользователя: ${user.id}</p>
             <p style="margin: 8px 0 0 0; font-size: 0.85em; font-weight: bold; color: #999;">${user.email}</p>
           </div>
           ${userProjectsHtml}
@@ -583,9 +928,9 @@
         userProjects.owned_projects.forEach(project => {
           const hasAccess = accessibleIds.has(project.id);
           if (hasAccess) {
-            html += `<li><span class="project-name" onclick="navigateToProject(${project.id})">${project.name}</span></li>`;
+            html += `<li><span class="project-name" onclick="navigateToProject(${project.id})">${project.name}</span><span class="project-meta">ID проекта: ${project.id}</span></li>`;
           } else {
-            html += `<li><span class="project-name project-unavailable">${project.name} (нет доступа)</span></li>`;
+            html += `<li><span class="project-name project-unavailable">${project.name} (нет доступа)</span><span class="project-meta">ID проекта: ${project.id}</span></li>`;
           }
         });
         html += '</ul></div>';
@@ -597,9 +942,9 @@
         userProjects.member_projects.forEach(project => {
           const hasAccess = accessibleIds.has(project.id);
           if (hasAccess) {
-            html += `<li><span class="project-name" onclick="navigateToProject(${project.id})">${project.name}</span></li>`;
+            html += `<li><span class="project-name" onclick="navigateToProject(${project.id})">${project.name}</span><span class="project-meta">ID проекта: ${project.id}</span></li>`;
           } else {
-            html += `<li><span class="project-name project-unavailable">${project.name} (нет доступа)</span></li>`;
+            html += `<li><span class="project-name project-unavailable">${project.name} (нет доступа)</span><span class="project-meta">ID проекта: ${project.id}</span></li>`;
           }
         });
         html += '</ul></div>';
@@ -722,32 +1067,74 @@
       }
     });
 
-    // Modal handlers
-    document.getElementById('create-task-btn').addEventListener('click', () => {
-      if (isManager) {
-        showCreateTaskModal();
-      } else {
-        showMessage('Создание задач доступно только менеджеру.', true);
+    document.getElementById('invite-member-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!isManager) {
+        showMessage('Приглашение участников доступно только менеджеру.', true);
+        return;
+      }
+
+      const email = document.getElementById('invite-member-email').value.trim();
+      if (!email) {
+        showMessage('Email обязателен.', true);
+        return;
+      }
+
+      try {
+        const member = await apiRequest(`/api/project-members/add?project_id=${projectId}`, {
+          method: 'POST',
+          body: JSON.stringify({ email }),
+        });
+
+        hideInviteMemberModal();
+        await loadMembers();
+
+        const projectName = projectInfo && projectInfo.name ? ` в проект "${projectInfo.name}"` : '';
+        showMessage(`Участник ${member.name} ${member.surname} приглашён${projectName}.`, false);
+      } catch (error) {
+        showMessage(error.message, true);
       }
     });
+
+    // Modal handlers
+    document.getElementById('open-create-task-btn').addEventListener('click', showCreateTaskModal);
+    document.getElementById('invite-member-btn').addEventListener('click', showInviteMemberModal);
 
     document.getElementById('create-modal-close').addEventListener('click', hideCreateTaskModal);
     document.getElementById('create-modal-cancel').addEventListener('click', hideCreateTaskModal);
     document.getElementById('detail-modal-close').addEventListener('click', hideTaskDetailModal);
+    document.getElementById('assign-modal-close').addEventListener('click', hideAssignModal);
+    document.getElementById('invite-modal-close').addEventListener('click', hideInviteMemberModal);
+    document.getElementById('invite-modal-cancel').addEventListener('click', hideInviteMemberModal);
     document.getElementById('profile-modal-close').addEventListener('click', () => {
       document.getElementById('profile-modal').style.display = 'none';
+    });
+    document.getElementById('assign-search-input').addEventListener('input', (event) => {
+      renderAssignList(event.target.value);
+    });
+    document.getElementById('toggle-closed-tasks-btn').addEventListener('click', () => {
+      closedTasksVisible = !closedTasksVisible;
+      syncClosedTasksVisibility();
     });
 
     // Close modals when clicking outside
     window.addEventListener('click', (event) => {
       const createModal = document.getElementById('create-task-modal');
       const detailModal = document.getElementById('task-detail-modal');
+      const assignModal = document.getElementById('assign-modal');
+      const inviteModal = document.getElementById('invite-member-modal');
       const profileModal = document.getElementById('profile-modal');
       if (event.target === createModal) {
         hideCreateTaskModal();
       }
       if (event.target === detailModal) {
         hideTaskDetailModal();
+      }
+      if (event.target === assignModal) {
+        hideAssignModal();
+      }
+      if (event.target === inviteModal) {
+        hideInviteMemberModal();
       }
       if (event.target === profileModal) {
         profileModal.style.display = 'none';

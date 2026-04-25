@@ -69,6 +69,7 @@ func main() {
 	// Task endpoints
 	mux.Handle("/api/my-tasks", authMiddleware(http.HandlerFunc(taskHandler.GetMyTasks)))
 	mux.Handle("/api/project-tasks", authMiddleware(http.HandlerFunc(taskHandler.GetAllProjectTasks)))
+	mux.Handle("/api/closed-project-tasks", authMiddleware(http.HandlerFunc(taskHandler.GetClosedProjectTasks)))
 	mux.Handle("/api/tasks", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			taskHandler.CreateTask(w, r)
@@ -80,6 +81,10 @@ func main() {
 		path := r.URL.Path
 		if strings.Contains(path, "/status") {
 			taskHandler.UpdateTaskStatus(w, r)
+		} else if strings.Contains(path, "/close") {
+			taskHandler.CloseTask(w, r)
+		} else if strings.Contains(path, "/unassign") {
+			taskHandler.UnassignTask(w, r)
 		} else if strings.Contains(path, "/assign") {
 			taskHandler.AssignTask(w, r)
 		} else if r.Method == http.MethodDelete {
@@ -92,6 +97,7 @@ func main() {
 	mux.Handle("/api/user-id", authMiddleware(http.HandlerFunc(projectHandler.GetUserID)))
 	mux.Handle("/api/project-members", authMiddleware(http.HandlerFunc(projectHandler.GetProjectMembers)))
 	mux.Handle("/api/project-members-details", authMiddleware(http.HandlerFunc(projectHandler.GetProjectMembersWithDetails)))
+	mux.Handle("/api/project-members/add", authMiddleware(http.HandlerFunc(projectHandler.AddProjectMember)))
 	mux.Handle("/api/user-projects", authMiddleware(http.HandlerFunc(projectHandler.GetUserProjects)))
 	mux.Handle("/api/is-manager", authMiddleware(http.HandlerFunc(projectHandler.IsUserManager)))
 	mux.Handle("/api/project-info", authMiddleware(http.HandlerFunc(projectHandler.GetProjectInfo)))

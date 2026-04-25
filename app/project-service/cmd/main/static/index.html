@@ -21,6 +21,8 @@
     .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
     .card { padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fafbfc; }
     .card h3 { margin: 0 0 8px; }
+    .card p { margin: 0; }
+    .entity-meta { margin-top: 10px; font-size: 12px; color: #94a3b8; letter-spacing: 0.02em; }
     .empty-state { color: #475569; }
     .logout { margin-left: 12px; background: #ef4444; }
   </style>
@@ -136,7 +138,11 @@
       projects.forEach(project => {
         const card = document.createElement('div');
         card.className = 'card';
-        card.innerHTML = `<h3>${project.name}</h3><p>${project.description}</p>`;
+        card.innerHTML = `
+          <h3>${project.name}</h3>
+          <p>${project.description}</p>
+          <div class="entity-meta">ID проекта: ${project.id}</div>
+        `;
         card.addEventListener('click', () => {
           window.location.href = `/project/${project.id}`;
         });

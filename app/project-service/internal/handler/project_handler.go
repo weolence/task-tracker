@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
@@ -283,6 +284,50 @@ func (handler *ProjectHandler) GetProjectMembersWithDetails(writer http.Response
 	}
 
 	writer.Header().Set("Content-Type", "application/json")
+	writer.Write(bytes)
+}
+
+func (handler *ProjectHandler) AddProjectMember(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := middleware.GetUserID(request.Context())
+	if !ok {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := request.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(writer, "invalid project id", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(request.Body).Decode(&req); err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	member, err := handler.projectController.AddProjectMember(request.Context(), projectID, userID, req.Email)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	bytes, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(member)
+	if err != nil {
+		http.Error(writer, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusCreated)
 	writer.Write(bytes)
 }
 

@@ -182,9 +182,10 @@
             { value: 'TASK_DIFFICULTY_HARD', label: 'Высокая' },
           ] },
           { name: 'status', label: 'Статус', type: 'select', required: true, options: [
-            { value: 'TASK_STATUS_NOT_STARTED', label: 'К выполнению' },
-            { value: 'TASK_STATUS_IN_WORK', label: 'В работе' },
-            { value: 'TASK_STATUS_COMPLETED', label: 'Выполнено' },
+            { value: '1', label: 'К выполнению' },
+            { value: '2', label: 'В работе' },
+            { value: '3', label: 'На проверке' },
+            { value: '4', label: 'Закрыта' },
           ] },
           { name: 'start_date', label: 'Дата начала', type: 'date' },
           { name: 'end_date', label: 'Дата завершения', type: 'date' },
@@ -221,6 +222,16 @@
       const message = document.getElementById('message');
       message.textContent = '';
       message.className = 'message hidden';
+    };
+
+    const TASK_STATUS_ADMIN_VALUES = {
+      TASK_STATUS_NOT_STARTED: '1',
+      TASK_STATUS_IN_WORK: '2',
+      TASK_STATUS_COMPLETED: '3',
+      1: '1',
+      2: '2',
+      3: '3',
+      4: '4',
     };
 
     const token = () => window.localStorage.getItem(storageKey);
@@ -322,6 +333,9 @@
 
       config.editorFields.forEach(field => {
         let value = data[field.name];
+        if (entity === 'task' && field.name === 'status') {
+          value = TASK_STATUS_ADMIN_VALUES[value] ?? value ?? '';
+        }
         if (field.type === 'datetime-local') {
           value = normalizeDateTimeLocal(value);
         }

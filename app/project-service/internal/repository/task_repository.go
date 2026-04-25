@@ -7,20 +7,21 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type TaskRepository struct {
-	Conn *pgx.Conn
+	Conn *pgxpool.Pool
 }
 
 func NewTaskRepository(ctx context.Context, dbLink string) (*TaskRepository, error) {
-	conn, err := pgx.Connect(ctx, dbLink)
+	conn, err := pgxpool.New(ctx, dbLink)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := conn.Ping(ctx); err != nil {
-		conn.Close(ctx)
+		conn.Close()
 		return nil, err
 	}
 
@@ -165,13 +166,18 @@ func (taskRepository *TaskRepository) ChangeStatus(ctx context.Context, taskID i
 		UPDATE tasks
 		SET status = $1,
 			start_date = CASE
-				WHEN $1 = 1 AND start_date IS NULL THEN now()
+				WHEN $1 = 2 AND start_date IS NULL THEN now()
 				ELSE start_date
+			END,
+			end_date = CASE
+				WHEN $1 = 4 THEN now()
+				WHEN $1 = 1 THEN NULL
+				ELSE end_date
 			END
-		WHERE id = $2
+		WHERE id = $2 AND status != $3
 	`
 
-	cmdTag, err := taskRepository.Conn.Exec(ctx, query, newStatus, taskID)
+	cmdTag, err := taskRepository.Conn.Exec(ctx, query, newStatus, taskID, model.TaskStatusClosed)
 	if err != nil {
 		return err
 	}
@@ -191,11 +197,11 @@ func (taskRepository *TaskRepository) GetTasksByProjectAndAssignee(ctx context.C
 	query := `
 		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
 		FROM tasks
-		WHERE project_id = $1 AND assignee_id = $2
+		WHERE project_id = $1 AND assignee_id = $2 AND status != $3
 		ORDER BY priority DESC, difficulty DESC
 	`
 
-	rows, err := taskRepository.Conn.Query(ctx, query, projectID, assigneeID)
+	rows, err := taskRepository.Conn.Query(ctx, query, projectID, assigneeID, model.TaskStatusClosed)
 	if err != nil {
 		return nil, err
 	}
@@ -206,11 +212,12 @@ func (taskRepository *TaskRepository) GetTasksByProjectAndAssignee(ctx context.C
 		var task model.Task
 		var startDate *time.Time
 		var endDate *time.Time
+		var resolvedAssigneeID *int32
 
 		err := rows.Scan(
 			&task.ID,
 			&task.ProjectID,
-			&task.AssigneeID,
+			&resolvedAssigneeID,
 			&task.Name,
 			&task.Description,
 			&task.Priority,
@@ -223,6 +230,8 @@ func (taskRepository *TaskRepository) GetTasksByProjectAndAssignee(ctx context.C
 			return nil, err
 		}
 
+		task.AssigneeID = resolvedAssigneeID
+		task.StartDate = startDate
 		if endDate != nil {
 			task.EndDate = endDate
 		}
@@ -237,11 +246,11 @@ func (taskRepository *TaskRepository) GetAllTasksByProject(ctx context.Context, 
 	query := `
 		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
 		FROM tasks
-		WHERE project_id = $1
+		WHERE project_id = $1 AND status != $2
 		ORDER BY priority DESC, difficulty DESC
 	`
 
-	rows, err := taskRepository.Conn.Query(ctx, query, projectID)
+	rows, err := taskRepository.Conn.Query(ctx, query, projectID, model.TaskStatusClosed)
 	if err != nil {
 		return nil, err
 	}
@@ -285,11 +294,36 @@ func (taskRepository *TaskRepository) GetAllTasksByProject(ctx context.Context, 
 func (taskRepository *TaskRepository) AssignTask(ctx context.Context, taskID int, assigneeID int) error {
 	query := `
 		UPDATE tasks
-		SET assignee_id = $1
-		WHERE id = $2
+		SET assignee_id = $1,
+			status = $2,
+			start_date = NULL,
+			end_date = NULL
+		WHERE id = $3 AND status != $4
 	`
 
-	cmdTag, err := taskRepository.Conn.Exec(ctx, query, assigneeID, taskID)
+	cmdTag, err := taskRepository.Conn.Exec(ctx, query, assigneeID, model.TaskStatusNotStarted, taskID, model.TaskStatusClosed)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("task not found")
+	}
+
+	return nil
+}
+
+func (taskRepository *TaskRepository) UnassignTask(ctx context.Context, taskID int) error {
+	query := `
+		UPDATE tasks
+		SET assignee_id = NULL,
+			status = $1,
+			start_date = NULL,
+			end_date = NULL
+		WHERE id = $2 AND status != $3
+	`
+
+	cmdTag, err := taskRepository.Conn.Exec(ctx, query, model.TaskStatusNotStarted, taskID, model.TaskStatusClosed)
 	if err != nil {
 		return err
 	}
@@ -377,6 +411,75 @@ func (taskRepository *TaskRepository) GetTaskByID(ctx context.Context, taskID in
 	}
 
 	return &task, nil
+}
+
+func (taskRepository *TaskRepository) GetClosedTasksByProject(ctx context.Context, projectID int) ([]model.Task, error) {
+	query := `
+		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
+		FROM tasks
+		WHERE project_id = $1 AND status = $2
+		ORDER BY end_date DESC, priority DESC, difficulty DESC
+	`
+
+	rows, err := taskRepository.Conn.Query(ctx, query, projectID, model.TaskStatusClosed)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tasks := make([]model.Task, 0)
+	for rows.Next() {
+		var task model.Task
+		var startDate *time.Time
+		var endDate *time.Time
+		var assigneeID *int32
+
+		err := rows.Scan(
+			&task.ID,
+			&task.ProjectID,
+			&assigneeID,
+			&task.Name,
+			&task.Description,
+			&task.Priority,
+			&task.Difficulty,
+			&task.Status,
+			&startDate,
+			&endDate,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		task.AssigneeID = assigneeID
+		task.StartDate = startDate
+		if endDate != nil {
+			task.EndDate = endDate
+		}
+
+		tasks = append(tasks, task)
+	}
+
+	return tasks, nil
+}
+
+func (taskRepository *TaskRepository) CloseTask(ctx context.Context, taskID int) error {
+	query := `
+		UPDATE tasks
+		SET status = $2,
+			end_date = now()
+		WHERE id = $1 AND status != $3
+	`
+
+	cmdTag, err := taskRepository.Conn.Exec(ctx, query, taskID, model.TaskStatusClosed, model.TaskStatusClosed)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("task not found")
+	}
+
+	return nil
 }
 
 func (taskRepository *TaskRepository) GetTaskByProjectAndName(ctx context.Context, projectID int32, name string) (*model.Task, error) {

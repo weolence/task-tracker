@@ -142,12 +142,21 @@ func (authHandler *AuthHandler) GetUserInfo(writer http.ResponseWriter, request 
 
 	var getUserRequest dto.GetUserRequest
 	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &getUserRequest)
-	if err != nil || getUserRequest.UserId == nil {
-		http.Error(writer, "user_id is required", http.StatusBadRequest)
+	if err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
 		return
 	}
 
-	user, err := authHandler.authController.GetUser(request.Context(), int(*getUserRequest.UserId))
+	var user *model.User
+	switch {
+	case getUserRequest.UserId != nil:
+		user, err = authHandler.authController.GetUser(request.Context(), int(*getUserRequest.UserId))
+	case getUserRequest.Email != nil && *getUserRequest.Email != "":
+		user, err = authHandler.authController.GetUserByEmail(request.Context(), *getUserRequest.Email)
+	default:
+		http.Error(writer, "user_id or email is required", http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
