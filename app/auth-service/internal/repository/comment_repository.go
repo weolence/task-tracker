@@ -73,6 +73,31 @@ func (commentRepository *CommentRepository) DeleteComment(ctx context.Context, c
 	return nil
 }
 
+func (commentRepository *CommentRepository) GetCommentByID(ctx context.Context, commentID int32) (*model.Comment, error) {
+	query := `
+		SELECT id, author_id, task_id, content, creation_date
+		FROM comments
+		WHERE id = $1
+	`
+
+	var comment model.Comment
+	err := commentRepository.Conn.QueryRow(ctx, query, commentID).Scan(
+		&comment.ID,
+		&comment.AuthorID,
+		&comment.TaskID,
+		&comment.Content,
+		&comment.CreationDate,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &comment, nil
+}
+
 func (commentRepository *CommentRepository) GetCommentsByAuthorID(ctx context.Context, authorID int) ([]model.Comment, error) {
 	query := `
 		SELECT id, author_id, task_id, content, creation_date
@@ -153,6 +178,34 @@ func (commentRepository *CommentRepository) ChangeContent(ctx context.Context, c
 	`
 
 	cmdTag, err := commentRepository.Conn.Exec(ctx, query, newContent, commentID)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("comment not found")
+	}
+
+	return nil
+}
+
+func (commentRepository *CommentRepository) UpdateComment(ctx context.Context, comment model.Comment) error {
+	query := `
+		UPDATE comments
+		SET author_id = $1,
+			task_id = $2,
+			content = $3,
+			creation_date = $4
+		WHERE id = $5
+	`
+
+	cmdTag, err := commentRepository.Conn.Exec(ctx, query,
+		comment.AuthorID,
+		comment.TaskID,
+		comment.Content,
+		comment.CreationDate,
+		comment.ID,
+	)
 	if err != nil {
 		return err
 	}

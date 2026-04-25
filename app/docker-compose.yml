@@ -27,6 +27,7 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@auth-db:5432/auth_db?sslmode=disable
       JWT_SECRET: supersecret123
+      PROJECT_SERVICE_URL: http://project-service:8081
       PORT: "8080"
     ports:
       - "8080:8080"

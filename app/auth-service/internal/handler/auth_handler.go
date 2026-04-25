@@ -6,7 +6,6 @@ import (
 	"auth-service/internal/model/dto"
 	"io"
 	"net/http"
-	"strconv"
 
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -134,20 +133,21 @@ func (authHandler *AuthHandler) ValidateToken(writer http.ResponseWriter, reques
 }
 
 func (authHandler *AuthHandler) GetUserInfo(writer http.ResponseWriter, request *http.Request) {
-	userIDStr := request.URL.Query().Get("user_id")
-	if userIDStr == "" {
-		http.Error(writer, "user_id query parameter is required", http.StatusBadRequest)
-		return
-	}
-
-	// Парсим ID как обычное число
-	userID, err := strconv.Atoi(userIDStr)
+	body, err := io.ReadAll(request.Body)
 	if err != nil {
-		http.Error(writer, "invalid user_id", http.StatusBadRequest)
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
+	}
+	defer request.Body.Close()
+
+	var getUserRequest dto.GetUserRequest
+	err = protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}.Unmarshal(body, &getUserRequest)
+	if err != nil || getUserRequest.UserId == nil {
+		http.Error(writer, "user_id is required", http.StatusBadRequest)
 		return
 	}
 
-	user, err := authHandler.authController.GetUser(request.Context(), userID)
+	user, err := authHandler.authController.GetUser(request.Context(), int(*getUserRequest.UserId))
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return

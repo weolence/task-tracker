@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"project-service/internal/model"
 	"time"
 
@@ -197,6 +198,45 @@ func (projectRepository *ProjectRepository) GetProjectByID(ctx context.Context, 
 		&endDate,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if endDate != nil {
+		endDateStr := endDate.Format("2006-01-02")
+		project.EndDate = &endDateStr
+	}
+
+	return &project, nil
+}
+
+func (projectRepository *ProjectRepository) GetProjectByName(ctx context.Context, name string) (*model.Project, error) {
+	query := `
+		SELECT id, manager_id, name, description, status, start_date, end_date
+		FROM projects
+		WHERE name = $1
+		ORDER BY id
+		LIMIT 1
+	`
+
+	var project model.Project
+	var endDate *time.Time
+
+	err := projectRepository.Conn.QueryRow(ctx, query, name).Scan(
+		&project.ID,
+		&project.ManagerID,
+		&project.Name,
+		&project.Description,
+		&project.Status,
+		&project.StartDate,
+		&endDate,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -237,4 +277,71 @@ func (projectRepository *ProjectRepository) GetProjectMembers(ctx context.Contex
 	}
 
 	return members, nil
+}
+
+func (projectRepository *ProjectRepository) UpdateProject(ctx context.Context, project model.Project) error {
+	var endDate any
+	if project.EndDate != nil && *project.EndDate != "" {
+		parsedEndDate, err := time.Parse("2006-01-02", *project.EndDate)
+		if err != nil {
+			return err
+		}
+		endDate = parsedEndDate
+	}
+
+	query := `
+		UPDATE projects
+		SET manager_id = $1,
+			name = $2,
+			description = $3,
+			status = $4,
+			start_date = $5,
+			end_date = $6
+		WHERE id = $7
+	`
+
+	cmdTag, err := projectRepository.Conn.Exec(ctx, query,
+		project.ManagerID,
+		project.Name,
+		project.Description,
+		project.Status,
+		project.StartDate,
+		endDate,
+		project.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("project not found")
+	}
+
+	_, err = projectRepository.Conn.Exec(ctx, `
+		INSERT INTO project_members (project_id, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (project_id, user_id) DO NOTHING
+	`, project.ID, project.ManagerID)
+	return err
+}
+
+func (projectRepository *ProjectRepository) DeleteProject(ctx context.Context, projectID int32) error {
+	if _, err := projectRepository.Conn.Exec(ctx, `DELETE FROM project_members WHERE project_id = $1`, projectID); err != nil {
+		return err
+	}
+
+	if _, err := projectRepository.Conn.Exec(ctx, `DELETE FROM tasks WHERE project_id = $1`, projectID); err != nil {
+		return err
+	}
+
+	cmdTag, err := projectRepository.Conn.Exec(ctx, `DELETE FROM projects WHERE id = $1`, projectID)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("project not found")
+	}
+
+	return nil
 }

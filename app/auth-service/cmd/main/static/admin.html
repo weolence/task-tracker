@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 32px; background: #f4f6f8; color: #0f172a; }
+    .container { max-width: 1120px; margin: 0 auto; background: #fff; padding: 24px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+    .header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .header h1 { margin: 0 0 8px; }
+    .header p { margin: 0; color: #475569; }
+    .actions { display: flex; gap: 12px; }
+    .entity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-top: 28px; }
+    .entity-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; background: #fafbfc; }
+    .entity-card h2 { margin: 0 0 8px; font-size: 20px; }
+    .entity-card p { margin: 0 0 16px; color: #475569; min-height: 44px; }
+    .workspace { margin-top: 28px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fafbfc; padding: 20px; }
+    .workspace h2 { margin-top: 0; }
+    .message { margin: 16px 0; padding: 12px; border-radius: 8px; }
+    .message.error { background: #fee2e2; color: #991b1b; }
+    .message.success { background: #dcfce7; color: #166534; }
+    .placeholder { color: #64748b; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full { grid-column: 1 / -1; }
+    label { font-weight: 600; }
+    input, textarea, select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; }
+    textarea { min-height: 110px; resize: vertical; }
+    button { padding: 12px 18px; border: none; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    button.secondary { background: #64748b; }
+    button.secondary:hover { background: #475569; }
+    button.danger { background: #dc2626; }
+    button.danger:hover { background: #b91c1c; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+    .hidden { display: none; }
+    .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; font-size: 13px; font-weight: 600; }
+    @media (max-width: 720px) {
+      body { padding: 16px; }
+      .header { flex-direction: column; }
+      .actions { width: 100%; }
+      .actions button { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <span class="pill">Admin</span>
+        <h1>Панель управления</h1>
+        <p id="subtitle">Проверяем токен и права доступа...</p>
+      </div>
+      <div class="actions">
+        <button id="clear-button" class="secondary">Очистить</button>
+        <button id="logout-button" class="danger">Выйти</button>
+      </div>
+    </div>
+
+    <div id="message" class="message hidden"></div>
+
+    <section class="entity-grid">
+      <div class="entity-card">
+        <h2>Пользователь</h2>
+        <p>Поиск, просмотр, редактирование профиля, роли и пароля.</p>
+        <button data-entity="user">Открыть</button>
+      </div>
+      <div class="entity-card">
+        <h2>Проект</h2>
+        <p>Управление полями проекта, менеджером, статусом и датами.</p>
+        <button data-entity="project">Открыть</button>
+      </div>
+      <div class="entity-card">
+        <h2>Задача</h2>
+        <p>Изменение статуса, исполнителя, приоритета и остальных полей.</p>
+        <button data-entity="task">Открыть</button>
+      </div>
+      <div class="entity-card">
+        <h2>Комментарий</h2>
+        <p>Просмотр, редактирование содержимого, автора, задачи и даты.</p>
+        <button data-entity="comment">Открыть</button>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <h2 id="workspace-title">Выберите сущность</h2>
+      <p id="workspace-description" class="placeholder">Нажмите одну из кнопок выше, затем введите параметры поиска. Когда сущность будет найдена, здесь появится форма для просмотра, редактирования и удаления.</p>
+
+      <form id="search-form" class="hidden">
+        <div id="search-fields" class="form-grid"></div>
+        <div class="toolbar">
+          <button type="submit">Найти</button>
+        </div>
+      </form>
+
+      <form id="editor-form" class="hidden">
+        <div id="editor-fields" class="form-grid"></div>
+        <div class="toolbar">
+          <button type="submit">Сохранить</button>
+          <button type="button" id="delete-button" class="danger">Удалить</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script>
+    const storageKey = 'admin_service_jwt';
+    let currentEntity = null;
+
+    const entityConfigs = {
+      user: {
+        title: 'Пользователь',
+        description: 'Введите `ID` или `email`, чтобы открыть пользователя.',
+        searchEndpoint: '/admin/api/users/get',
+        updateEndpoint: '/admin/api/users',
+        deleteEndpoint: '/admin/api/users',
+        searchFields: [
+          { name: 'user_id', label: 'ID пользователя', type: 'number' },
+          { name: 'email', label: 'Email', type: 'email' },
+        ],
+        editorFields: [
+          { name: 'id', label: 'ID', type: 'number', readonly: true },
+          { name: 'email', label: 'Email', type: 'email', required: true },
+          { name: 'name', label: 'Имя', type: 'text', required: true },
+          { name: 'surname', label: 'Фамилия', type: 'text', required: true },
+          { name: 'role', label: 'Роль', type: 'select', required: true, options: [
+            { value: 'user', label: 'user' },
+            { value: 'admin', label: 'admin' },
+          ] },
+          { name: 'password', label: 'Новый пароль', type: 'password', helper: 'Оставьте пустым, если пароль менять не нужно.' },
+        ],
+      },
+      project: {
+        title: 'Проект',
+        description: 'Введите `ID` проекта или точное название.',
+        searchEndpoint: '/admin/api/projects/get',
+        updateEndpoint: '/admin/api/projects',
+        deleteEndpoint: '/admin/api/projects',
+        searchFields: [
+          { name: 'project_id', label: 'ID проекта', type: 'number' },
+          { name: 'name', label: 'Название проекта', type: 'text' },
+        ],
+        editorFields: [
+          { name: 'id', label: 'ID', type: 'number', readonly: true },
+          { name: 'manager_id', label: 'ID менеджера', type: 'number', required: true },
+          { name: 'name', label: 'Название', type: 'text', required: true },
+          { name: 'description', label: 'Описание', type: 'textarea', required: true, full: true },
+          { name: 'status', label: 'Статус', type: 'select', required: true, options: [
+            { value: 'PROJECT_STATUS_IN_WORK', label: 'В работе' },
+            { value: 'PROJECT_STATUS_ENDED', label: 'Завершен' },
+          ] },
+          { name: 'start_date', label: 'Дата старта', type: 'date', required: true },
+          { name: 'end_date', label: 'Дата завершения', type: 'date' },
+        ],
+      },
+      task: {
+        title: 'Задача',
+        description: 'Введите `ID` задачи или связку `project_id + name`.',
+        searchEndpoint: '/admin/api/tasks/get',
+        updateEndpoint: '/admin/api/tasks',
+        deleteEndpoint: '/admin/api/tasks',
+        searchFields: [
+          { name: 'task_id', label: 'ID задачи', type: 'number' },
+          { name: 'project_id', label: 'ID проекта', type: 'number' },
+          { name: 'name', label: 'Название задачи', type: 'text' },
+        ],
+        editorFields: [
+          { name: 'id', label: 'ID', type: 'number', readonly: true },
+          { name: 'project_id', label: 'ID проекта', type: 'number', required: true },
+          { name: 'assignee_id', label: 'ID исполнителя', type: 'number' },
+          { name: 'name', label: 'Название', type: 'text', required: true },
+          { name: 'description', label: 'Описание', type: 'textarea', full: true },
+          { name: 'priority', label: 'Приоритет', type: 'select', required: true, options: [
+            { value: 'TASK_PRIORITY_LOW', label: 'Низкий' },
+            { value: 'TASK_PRIORITY_MEDIUM', label: 'Средний' },
+            { value: 'TASK_PRIORITY_HIGH', label: 'Высокий' },
+          ] },
+          { name: 'difficulty', label: 'Сложность', type: 'select', required: true, options: [
+            { value: 'TASK_DIFFICULTY_EASY', label: 'Легкая' },
+            { value: 'TASK_DIFFICULTY_MEDIUM', label: 'Средняя' },
+            { value: 'TASK_DIFFICULTY_HARD', label: 'Высокая' },
+          ] },
+          { name: 'status', label: 'Статус', type: 'select', required: true, options: [
+            { value: 'TASK_STATUS_NOT_STARTED', label: 'К выполнению' },
+            { value: 'TASK_STATUS_IN_WORK', label: 'В работе' },
+            { value: 'TASK_STATUS_COMPLETED', label: 'Выполнено' },
+          ] },
+          { name: 'start_date', label: 'Дата начала', type: 'date' },
+          { name: 'end_date', label: 'Дата завершения', type: 'date' },
+        ],
+      },
+      comment: {
+        title: 'Комментарий',
+        description: 'Введите `ID` комментария, `author_id` или `task_id`.',
+        searchEndpoint: '/admin/api/comments/get',
+        updateEndpoint: '/admin/api/comments',
+        deleteEndpoint: '/admin/api/comments',
+        searchFields: [
+          { name: 'comment_id', label: 'ID комментария', type: 'number' },
+          { name: 'author_id', label: 'ID автора', type: 'number' },
+          { name: 'task_id', label: 'ID задачи', type: 'number' },
+        ],
+        editorFields: [
+          { name: 'id', label: 'ID', type: 'number', readonly: true },
+          { name: 'author_id', label: 'ID автора', type: 'number', required: true },
+          { name: 'task_id', label: 'ID задачи', type: 'number', required: true },
+          { name: 'creation_date', label: 'Дата создания', type: 'datetime-local', required: true },
+          { name: 'content', label: 'Текст комментария', type: 'textarea', required: true, full: true },
+        ],
+      },
+    };
+
+    const showMessage = (text, isError = false) => {
+      const message = document.getElementById('message');
+      message.textContent = text;
+      message.className = 'message ' + (isError ? 'error' : 'success');
+    };
+
+    const clearMessage = () => {
+      const message = document.getElementById('message');
+      message.textContent = '';
+      message.className = 'message hidden';
+    };
+
+    const token = () => window.localStorage.getItem(storageKey);
+    const setToken = (value) => window.localStorage.setItem(storageKey, value);
+    const clearToken = () => window.localStorage.removeItem(storageKey);
+
+    const getTokenFromQuery = () => new URLSearchParams(window.location.search).get('token');
+
+    const apiRequest = async (path, method, payload) => {
+      const response = await fetch(path, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token(),
+        },
+        body: payload ? JSON.stringify(payload) : undefined,
+      });
+
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text || 'Ошибка сервера');
+      }
+
+      return text ? JSON.parse(text) : null;
+    };
+
+    const normalizeDateTimeLocal = (value) => {
+      if (!value) {
+        return '';
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return '';
+      }
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    };
+
+    const renderField = (field, value = '') => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-group' + (field.full ? ' full' : '');
+
+      const label = document.createElement('label');
+      label.setAttribute('for', field.name);
+      label.textContent = field.label;
+      wrapper.appendChild(label);
+
+      let input;
+      if (field.type === 'textarea') {
+        input = document.createElement('textarea');
+      } else if (field.type === 'select') {
+        input = document.createElement('select');
+        field.options.forEach(option => {
+          const opt = document.createElement('option');
+          opt.value = option.value;
+          opt.textContent = option.label;
+          input.appendChild(opt);
+        });
+      } else {
+        input = document.createElement('input');
+        input.type = field.type;
+      }
+
+      input.id = field.name;
+      input.name = field.name;
+      input.value = value ?? '';
+      input.readOnly = !!field.readonly;
+      if (field.required) {
+        input.required = true;
+      }
+      wrapper.appendChild(input);
+
+      if (field.helper) {
+        const helper = document.createElement('small');
+        helper.textContent = field.helper;
+        helper.style.color = '#64748b';
+        wrapper.appendChild(helper);
+      }
+
+      return wrapper;
+    };
+
+    const renderSearch = (entity) => {
+      const config = entityConfigs[entity];
+      currentEntity = entity;
+      document.getElementById('workspace-title').textContent = config.title;
+      document.getElementById('workspace-description').textContent = config.description;
+      document.getElementById('editor-form').classList.add('hidden');
+
+      const fields = document.getElementById('search-fields');
+      fields.innerHTML = '';
+      config.searchFields.forEach(field => fields.appendChild(renderField(field)));
+      document.getElementById('search-form').classList.remove('hidden');
+    };
+
+    const populateEditor = (entity, data) => {
+      const config = entityConfigs[entity];
+      const fields = document.getElementById('editor-fields');
+      fields.innerHTML = '';
+
+      config.editorFields.forEach(field => {
+        let value = data[field.name];
+        if (field.type === 'datetime-local') {
+          value = normalizeDateTimeLocal(value);
+        }
+        fields.appendChild(renderField(field, value));
+      });
+
+      document.getElementById('editor-form').dataset.entity = entity;
+      document.getElementById('editor-form').classList.remove('hidden');
+    };
+
+    const searchPayload = (entity) => {
+      const payload = {};
+      entityConfigs[entity].searchFields.forEach(field => {
+        const rawValue = document.getElementById(field.name).value.trim();
+        if (!rawValue) {
+          return;
+        }
+        payload[field.name] = field.type === 'number' ? Number(rawValue) : rawValue;
+      });
+      return payload;
+    };
+
+    const editorPayload = (entity) => {
+      if (entity === 'user') {
+        const payload = {
+          user: {
+            id: Number(document.getElementById('id').value),
+            email: document.getElementById('email').value.trim(),
+            name: document.getElementById('name').value.trim(),
+            surname: document.getElementById('surname').value.trim(),
+            role: document.getElementById('role').value,
+          }
+        };
+        const password = document.getElementById('password').value;
+        if (password) {
+          payload.password = password;
+        }
+        return payload;
+      }
+
+      if (entity === 'project') {
+        const payload = {
+          project: {
+            id: Number(document.getElementById('id').value),
+            manager_id: Number(document.getElementById('manager_id').value),
+            name: document.getElementById('name').value.trim(),
+            description: document.getElementById('description').value.trim(),
+            status: document.getElementById('status').value,
+            start_date: document.getElementById('start_date').value,
+          }
+        };
+        const endDate = document.getElementById('end_date').value;
+        if (endDate) {
+          payload.project.end_date = endDate;
+        }
+        return payload;
+      }
+
+      if (entity === 'task') {
+        const payload = {
+          task: {
+            id: Number(document.getElementById('id').value),
+            project_id: Number(document.getElementById('project_id').value),
+            name: document.getElementById('name').value.trim(),
+            priority: document.getElementById('priority').value,
+            difficulty: document.getElementById('difficulty').value,
+            status: document.getElementById('status').value,
+          }
+        };
+        const assignee = document.getElementById('assignee_id').value.trim();
+        const description = document.getElementById('description').value.trim();
+        const startDate = document.getElementById('start_date').value;
+        const endDate = document.getElementById('end_date').value;
+        if (assignee) {
+          payload.task.assignee_id = Number(assignee);
+        }
+        if (description) {
+          payload.task.description = description;
+        }
+        if (startDate) {
+          payload.task.start_date = startDate;
+        }
+        if (endDate) {
+          payload.task.end_date = endDate;
+        }
+        return payload;
+      }
+
+      return {
+        comment: {
+          id: Number(document.getElementById('id').value),
+          author_id: Number(document.getElementById('author_id').value),
+          task_id: Number(document.getElementById('task_id').value),
+          content: document.getElementById('content').value.trim(),
+          creation_date: new Date(document.getElementById('creation_date').value).toISOString(),
+        }
+      };
+    };
+
+    const deletePayload = (entity) => {
+      const id = Number(document.getElementById('id').value);
+      if (entity === 'user') return { user_id: id };
+      if (entity === 'project') return { project_id: id };
+      if (entity === 'task') return { task_id: id };
+      return { comment_id: id };
+    };
+
+    const requireAdmin = async () => {
+      const queryToken = getTokenFromQuery();
+      if (queryToken) {
+        setToken(queryToken);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      if (!token()) {
+        showMessage('Токен не найден. Выполните вход заново.', true);
+        document.getElementById('subtitle').textContent = 'Нет активной сессии администратора.';
+        return false;
+      }
+
+      try {
+        const validation = await apiRequest('/validate-token', 'POST', { token: token() });
+        if (validation.role !== 'admin') {
+          showMessage('Доступ разрешен только администраторам.', true);
+          document.getElementById('subtitle').textContent = 'Недостаточно прав для панели управления.';
+          return false;
+        }
+
+        document.getElementById('subtitle').textContent = 'Панель готова к работе. Все запросы выполняются через protobuf-контракты.';
+        return true;
+      } catch (error) {
+        showMessage(error.message, true);
+        document.getElementById('subtitle').textContent = 'Не удалось подтвердить права доступа.';
+        return false;
+      }
+    };
+
+    document.querySelectorAll('[data-entity]').forEach(button => {
+      button.addEventListener('click', () => {
+        clearMessage();
+        renderSearch(button.dataset.entity);
+      });
+    });
+
+    document.getElementById('search-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearMessage();
+
+      try {
+        const payload = searchPayload(currentEntity);
+        const data = await apiRequest(entityConfigs[currentEntity].searchEndpoint, 'POST', payload);
+        populateEditor(currentEntity, data);
+        showMessage(entityConfigs[currentEntity].title + ' найден.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    });
+
+    document.getElementById('editor-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearMessage();
+
+      try {
+        await apiRequest(entityConfigs[currentEntity].updateEndpoint, 'PUT', editorPayload(currentEntity));
+        showMessage('Изменения сохранены.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    });
+
+    document.getElementById('delete-button').addEventListener('click', async () => {
+      clearMessage();
+
+      try {
+        await apiRequest(entityConfigs[currentEntity].deleteEndpoint, 'DELETE', deletePayload(currentEntity));
+        document.getElementById('editor-form').classList.add('hidden');
+        showMessage('Сущность удалена.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    });
+
+    document.getElementById('clear-button').addEventListener('click', () => {
+      clearMessage();
+      currentEntity = null;
+      document.getElementById('workspace-title').textContent = 'Выберите сущность';
+      document.getElementById('workspace-description').textContent = 'Нажмите одну из кнопок выше, затем введите параметры поиска. Когда сущность будет найдена, здесь появится форма для просмотра, редактирования и удаления.';
+      document.getElementById('search-fields').innerHTML = '';
+      document.getElementById('editor-fields').innerHTML = '';
+      document.getElementById('search-form').classList.add('hidden');
+      document.getElementById('editor-form').classList.add('hidden');
+    });
+
+    document.getElementById('logout-button').addEventListener('click', () => {
+      clearToken();
+      window.location.href = '/';
+    });
+
+    requireAdmin();
+  </script>
+</body>
+</html>

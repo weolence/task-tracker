@@ -1,14 +1,18 @@
 package controller
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"project-service/internal/model"
 	"project-service/internal/model/dto"
 	"project-service/internal/repository"
+	"time"
+
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type ProjectController struct {
@@ -205,8 +209,12 @@ func (controller *ProjectController) fetchUserFromAuthService(userID int32) (mod
 		return model.User{}, errors.New("auth service URL not configured")
 	}
 
-	url := fmt.Sprintf("%s/user-info?user_id=%d", controller.authServiceURL, userID)
-	resp, err := http.Get(url)
+	reqBody, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(&dto.GetUserRequest{UserId: &userID})
+	if err != nil {
+		return model.User{}, err
+	}
+
+	resp, err := http.Post(controller.authServiceURL+"/user-info", "application/json", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return model.User{}, err
 	}
@@ -216,12 +224,23 @@ func (controller *ProjectController) fetchUserFromAuthService(userID int32) (mod
 		return model.User{}, fmt.Errorf("failed to fetch user info from auth service: %d", resp.StatusCode)
 	}
 
-	var member model.User
-	if err := json.NewDecoder(resp.Body).Decode(&member); err != nil {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return model.User{}, err
 	}
 
-	return member, nil
+	var member dto.User
+	if err := protojson.Unmarshal(body, &member); err != nil {
+		return model.User{}, err
+	}
+
+	return model.User{
+		ID:      int(member.Id),
+		Email:   member.Email,
+		Name:    member.Name,
+		Surname: member.Surname,
+		Role:    member.Role,
+	}, nil
 }
 
 func (controller *ProjectController) GetUserProjects(ctx context.Context, userID int32) (dto.DashboardResponse, error) {
@@ -291,4 +310,64 @@ func (controller *ProjectController) GetProjectInfo(ctx context.Context, project
 		StartDate:   project.StartDate.Format("2006-01-02"),
 		EndDate:     project.EndDate,
 	}, nil
+}
+
+func (controller *ProjectController) GetProjectForAdmin(ctx context.Context, projectID *int32, name *string) (*dto.Project, error) {
+	var (
+		project *model.Project
+		err     error
+	)
+
+	switch {
+	case projectID != nil && *projectID > 0:
+		project, err = controller.projectRepository.GetProjectByID(ctx, int(*projectID))
+	case name != nil && *name != "":
+		project, err = controller.projectRepository.GetProjectByName(ctx, *name)
+	default:
+		return nil, errors.New("project_id or name is required")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, errors.New("project not found")
+	}
+
+	return &dto.Project{
+		Id:          project.ID,
+		ManagerId:   project.ManagerID,
+		Name:        project.Name,
+		Description: project.Description,
+		Status:      dto.ProjectStatus(project.Status + 1),
+		StartDate:   project.StartDate.Format("2006-01-02"),
+		EndDate:     project.EndDate,
+	}, nil
+}
+
+func (controller *ProjectController) UpdateProjectForAdmin(ctx context.Context, project *dto.Project) error {
+	if project == nil || project.Id == 0 {
+		return errors.New("project id is required")
+	}
+
+	startDate, err := time.Parse("2006-01-02", project.StartDate)
+	if err != nil {
+		return err
+	}
+
+	return controller.projectRepository.UpdateProject(ctx, model.Project{
+		ID:          project.Id,
+		ManagerID:   project.ManagerId,
+		Name:        project.Name,
+		Description: project.Description,
+		Status:      model.ProjectStatus(project.Status - 1),
+		StartDate:   startDate,
+		EndDate:     project.EndDate,
+	})
+}
+
+func (controller *ProjectController) DeleteProjectForAdmin(ctx context.Context, projectID int32) error {
+	if projectID == 0 {
+		return errors.New("project id is required")
+	}
+	return controller.projectRepository.DeleteProject(ctx, projectID)
 }

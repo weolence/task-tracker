@@ -117,3 +117,34 @@ message UpdateTaskStatusRequest {
 message IsUserManagerResponse {
   bool is_manager = 1;
 }
+
+message GetProjectRequest {
+  optional int32 project_id = 1;
+  optional string name = 2;
+}
+
+message UpdateProjectRequest {
+  Project project = 1;
+}
+
+message DeleteProjectRequest {
+  int32 project_id = 1;
+}
+
+message GetTaskRequest {
+  optional int32 task_id = 1;
+  optional int32 project_id = 2;
+  optional string name = 3;
+}
+
+message UpdateTaskRequest {
+  Task task = 1;
+}
+
+message DeleteTaskRequest {
+  int32 task_id = 1;
+}
+
+message OperationResponse {
+  string message = 1;
+}

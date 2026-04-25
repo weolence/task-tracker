@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"project-service/internal/model"
 	"project-service/internal/model/dto"
 	"project-service/internal/repository"
+	"time"
 )
 
 type TaskController struct {
@@ -106,4 +108,98 @@ func (controller *TaskController) UpdateTask(ctx context.Context, task model.Tas
 
 func (controller *TaskController) GetTaskByID(ctx context.Context, taskID int) (*model.Task, error) {
 	return controller.taskRepository.GetTaskByID(ctx, taskID)
+}
+
+func (controller *TaskController) GetTaskForAdmin(ctx context.Context, taskID *int32, projectID *int32, name *string) (*dto.Task, error) {
+	var (
+		task *model.Task
+		err  error
+	)
+
+	switch {
+	case taskID != nil && *taskID > 0:
+		task, err = controller.taskRepository.GetTaskByID(ctx, int(*taskID))
+	case projectID != nil && *projectID > 0 && name != nil && *name != "":
+		task, err = controller.taskRepository.GetTaskByProjectAndName(ctx, *projectID, *name)
+	default:
+		return nil, errors.New("task_id or project_id with name is required")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if task == nil {
+		return nil, errors.New("task not found")
+	}
+
+	var startDate, endDate *string
+	if task.StartDate != nil {
+		s := task.StartDate.Format("2006-01-02")
+		startDate = &s
+	}
+	if task.EndDate != nil {
+		s := task.EndDate.Format("2006-01-02")
+		endDate = &s
+	}
+
+	return &dto.Task{
+		Id:          task.ID,
+		ProjectId:   task.ProjectID,
+		AssigneeId:  task.AssigneeID,
+		Name:        task.Name,
+		Description: &task.Description,
+		Priority:    dto.TaskPriority(task.Priority),
+		Difficulty:  dto.TaskDifficulty(task.Difficulty),
+		Status:      dto.TaskStatus(task.Status),
+		StartDate:   startDate,
+		EndDate:     endDate,
+	}, nil
+}
+
+func (controller *TaskController) UpdateTaskForAdmin(ctx context.Context, task *dto.Task) error {
+	if task == nil || task.Id == 0 {
+		return errors.New("task id is required")
+	}
+
+	var startDate *time.Time
+	if task.StartDate != nil && *task.StartDate != "" {
+		parsed, err := time.Parse("2006-01-02", *task.StartDate)
+		if err != nil {
+			return err
+		}
+		startDate = &parsed
+	}
+
+	var endDate *time.Time
+	if task.EndDate != nil && *task.EndDate != "" {
+		parsed, err := time.Parse("2006-01-02", *task.EndDate)
+		if err != nil {
+			return err
+		}
+		endDate = &parsed
+	}
+
+	description := ""
+	if task.Description != nil {
+		description = *task.Description
+	}
+
+	return controller.taskRepository.UpdateTask(ctx, model.Task{
+		ID:          task.Id,
+		ProjectID:   task.ProjectId,
+		AssigneeID:  task.AssigneeId,
+		Name:        task.Name,
+		Description: description,
+		Priority:    model.TaskPriority(task.Priority),
+		Difficulty:  model.TaskDifficulty(task.Difficulty),
+		Status:      model.TaskStatus(task.Status),
+		StartDate:   startDate,
+		EndDate:     endDate,
+	})
+}
+
+func (controller *TaskController) DeleteTaskForAdmin(ctx context.Context, taskID int32) error {
+	if taskID == 0 {
+		return errors.New("task id is required")
+	}
+	return controller.taskRepository.DeleteTask(ctx, int(taskID))
 }

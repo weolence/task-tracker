@@ -56,6 +56,7 @@ func main() {
 
 	projectHandler := handler.NewProjectHandler(projectController)
 	taskHandler := handler.NewTaskHandler(taskController, projectController)
+	adminHandler := handler.NewAdminHandler(projectController, taskController)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", serveIndex)
@@ -94,6 +95,28 @@ func main() {
 	mux.Handle("/api/user-projects", authMiddleware(http.HandlerFunc(projectHandler.GetUserProjects)))
 	mux.Handle("/api/is-manager", authMiddleware(http.HandlerFunc(projectHandler.IsUserManager)))
 	mux.Handle("/api/project-info", authMiddleware(http.HandlerFunc(projectHandler.GetProjectInfo)))
+	mux.Handle("/api/admin/projects/get", authMiddleware(middleware.AdminOnly(http.HandlerFunc(adminHandler.GetProject))))
+	mux.Handle("/api/admin/projects", authMiddleware(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			adminHandler.UpdateProject(w, r)
+		case http.MethodDelete:
+			adminHandler.DeleteProject(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+	mux.Handle("/api/admin/tasks/get", authMiddleware(middleware.AdminOnly(http.HandlerFunc(adminHandler.GetTask))))
+	mux.Handle("/api/admin/tasks", authMiddleware(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			adminHandler.UpdateTask(w, r)
+		case http.MethodDelete:
+			adminHandler.DeleteTask(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
 	mux.HandleFunc("/project/", serveProjectPage)
 
 	serverPort := os.Getenv("PORT")

@@ -304,16 +304,27 @@ func (taskRepository *TaskRepository) AssignTask(ctx context.Context, taskID int
 func (taskRepository *TaskRepository) UpdateTask(ctx context.Context, task model.Task) error {
 	query := `
 		UPDATE tasks
-		SET name = $1, description = $2, priority = $3, difficulty = $4, status = $5, end_date = $6
-		WHERE id = $7
+		SET project_id = $1,
+			assignee_id = $2,
+			name = $3,
+			description = $4,
+			priority = $5,
+			difficulty = $6,
+			status = $7,
+			start_date = $8,
+			end_date = $9
+		WHERE id = $10
 	`
 
 	cmdTag, err := taskRepository.Conn.Exec(ctx, query,
+		task.ProjectID,
+		task.AssigneeID,
 		task.Name,
 		task.Description,
 		task.Priority,
 		task.Difficulty,
 		task.Status,
+		task.StartDate,
 		task.EndDate,
 		task.ID,
 	)
@@ -330,7 +341,7 @@ func (taskRepository *TaskRepository) UpdateTask(ctx context.Context, task model
 
 func (taskRepository *TaskRepository) GetTaskByID(ctx context.Context, taskID int) (*model.Task, error) {
 	query := `
-		SELECT id, project_id, assignee_id, name, priority, difficulty, status, start_date, end_date
+		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
 		FROM tasks
 		WHERE id = $1
 	`
@@ -345,6 +356,7 @@ func (taskRepository *TaskRepository) GetTaskByID(ctx context.Context, taskID in
 		&task.ProjectID,
 		&assigneeID,
 		&task.Name,
+		&task.Description,
 		&task.Priority,
 		&task.Difficulty,
 		&task.Status,
@@ -352,6 +364,9 @@ func (taskRepository *TaskRepository) GetTaskByID(ctx context.Context, taskID in
 		&endDate,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -360,6 +375,46 @@ func (taskRepository *TaskRepository) GetTaskByID(ctx context.Context, taskID in
 	if endDate != nil {
 		task.EndDate = endDate
 	}
+
+	return &task, nil
+}
+
+func (taskRepository *TaskRepository) GetTaskByProjectAndName(ctx context.Context, projectID int32, name string) (*model.Task, error) {
+	query := `
+		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
+		FROM tasks
+		WHERE project_id = $1 AND name = $2
+		ORDER BY id
+		LIMIT 1
+	`
+
+	var task model.Task
+	var startDate *time.Time
+	var endDate *time.Time
+	var assigneeID *int32
+
+	err := taskRepository.Conn.QueryRow(ctx, query, projectID, name).Scan(
+		&task.ID,
+		&task.ProjectID,
+		&assigneeID,
+		&task.Name,
+		&task.Description,
+		&task.Priority,
+		&task.Difficulty,
+		&task.Status,
+		&startDate,
+		&endDate,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	task.AssigneeID = assigneeID
+	task.StartDate = startDate
+	task.EndDate = endDate
 
 	return &task, nil
 }

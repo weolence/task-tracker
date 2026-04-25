@@ -15,11 +15,13 @@ import (
 
 	"auth-service/internal/controller"
 	"auth-service/internal/handler"
+	"auth-service/internal/middleware"
 	"auth-service/internal/model"
 	"auth-service/internal/repository"
 )
 
 //go:embed static/index.html
+//go:embed static/admin.html
 var staticFiles embed.FS
 
 func main() {
@@ -41,18 +43,64 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
+	commentRepo, err := repository.NewCommentRepository(ctx, dbURL)
+	if err != nil {
+		log.Fatalf("failed to connect to comments database: %v", err)
+	}
+
 	authController, err := controller.NewAuthController(*userRepo, []byte(jwtSecret))
 	if err != nil {
 		log.Fatalf("failed to create auth controller: %v", err)
 	}
 
 	authHandler := handler.NewAuthHandler(authController)
+	projectServiceURL := os.Getenv("PROJECT_SERVICE_URL")
+	if projectServiceURL == "" {
+		projectServiceURL = "http://localhost:8081"
+	}
+	adminHandler := handler.NewAdminHandler(userRepo, commentRepo, projectServiceURL)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", serveIndex)
+	mux.HandleFunc("/admin", serveAdminPage)
 	mux.HandleFunc("/login", authHandler.Login)
 	mux.HandleFunc("/validate-token", authHandler.ValidateToken)
 	mux.HandleFunc("/user-info", authHandler.GetUserInfo)
+	adminAuth := middleware.AuthMiddleware([]byte(jwtSecret))
+	mux.Handle("/admin/api/users/get", adminAuth(middleware.AdminOnly(http.HandlerFunc(adminHandler.GetUser))))
+	mux.Handle("/admin/api/users", adminAuth(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			adminHandler.UpdateUser(w, r)
+		case http.MethodDelete:
+			adminHandler.DeleteUser(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+	mux.Handle("/admin/api/comments/get", adminAuth(middleware.AdminOnly(http.HandlerFunc(adminHandler.GetComment))))
+	mux.Handle("/admin/api/comments", adminAuth(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			adminHandler.UpdateComment(w, r)
+		case http.MethodDelete:
+			adminHandler.DeleteComment(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+	mux.Handle("/admin/api/projects/get", adminAuth(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		adminHandler.ProxyProject(w, r, "/api/admin/projects/get")
+	}))))
+	mux.Handle("/admin/api/projects", adminAuth(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		adminHandler.ProxyProject(w, r, "/api/admin/projects")
+	}))))
+	mux.Handle("/admin/api/tasks/get", adminAuth(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		adminHandler.ProxyTask(w, r, "/api/admin/tasks/get")
+	}))))
+	mux.Handle("/admin/api/tasks", adminAuth(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		adminHandler.ProxyTask(w, r, "/api/admin/tasks")
+	}))))
 
 	serverPort := os.Getenv("PORT")
 	if serverPort == "" {
@@ -209,6 +257,22 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	page, err := staticFiles.ReadFile("static/index.html")
+	if err != nil {
+		http.Error(w, "failed to load page", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(page)
+}
+
+func serveAdminPage(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/admin" {
+		http.NotFound(w, r)
+		return
+	}
+
+	page, err := staticFiles.ReadFile("static/admin.html")
 	if err != nil {
 		http.Error(w, "failed to load page", http.StatusInternalServerError)
 		return

@@ -102,6 +102,21 @@ func (userRepository *UserRepository) DeleteUserByEmail(ctx context.Context, ema
 	return nil
 }
 
+func (userRepository *UserRepository) DeleteUserByID(ctx context.Context, userID int32) error {
+	query := `DELETE FROM users WHERE id = $1`
+
+	cmdTag, err := userRepository.Conn.Exec(ctx, query, userID)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
+}
+
 // returns nil without errors if user wasn't found
 func (userRepository *UserRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	query := `
@@ -224,6 +239,36 @@ func (userRepository *UserRepository) ChangeRole(ctx context.Context, email stri
 	`
 
 	cmdTag, err := userRepository.Conn.Exec(ctx, query, newRole, email)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
+}
+
+func (userRepository *UserRepository) UpdateUser(ctx context.Context, user model.User, hashedPassword *string) error {
+	query := `
+		UPDATE users
+		SET email = $1,
+			name = $2,
+			surname = $3,
+			role = $4,
+			password = COALESCE($5, password)
+		WHERE id = $6
+	`
+
+	cmdTag, err := userRepository.Conn.Exec(ctx, query,
+		user.Email,
+		user.Name,
+		user.Surname,
+		user.Role,
+		hashedPassword,
+		user.ID,
+	)
 	if err != nil {
 		return err
 	}
