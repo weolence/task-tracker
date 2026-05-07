@@ -76,6 +76,15 @@
       return response.json();
     };
 
+    const buildServiceUrl = (port, path = '/') => {
+      const url = new URL(window.location.href);
+      url.port = port;
+      url.pathname = path;
+      url.search = '';
+      url.hash = '';
+      return url;
+    };
+
     document.getElementById('login-form').addEventListener('submit', async (event) => {
       event.preventDefault();
       clearMessage();
@@ -94,9 +103,11 @@
             : 'Вход выполнен успешно. Перенаправляем на страницу проектов...',
           false
         );
+        const projectUrl = buildServiceUrl('8081');
+        projectUrl.searchParams.set('token', result.token);
         window.location.href = isAdmin
           ? `/admin?token=${encodeURIComponent(result.token)}`
-          : `http://localhost:8081/?token=${encodeURIComponent(result.token)}`;
+          : projectUrl.toString();
       } catch (error) {
         showMessage(error.message, true);
       }

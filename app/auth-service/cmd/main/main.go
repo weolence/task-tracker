@@ -46,11 +46,6 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	commentRepo, err := repository.NewCommentRepository(ctx, dbURL)
-	if err != nil {
-		log.Fatalf("failed to connect to comments database: %v", err)
-	}
-
 	authController, err := controller.NewAuthController(*userRepo, []byte(jwtSecret))
 	if err != nil {
 		log.Fatalf("failed to create auth controller: %v", err)
@@ -61,7 +56,7 @@ func main() {
 	if projectServiceURL == "" {
 		projectServiceURL = "http://localhost:8081"
 	}
-	adminHandler := handler.NewAdminHandler(userRepo, commentRepo, projectServiceURL)
+	adminHandler := handler.NewAdminHandler(userRepo, projectServiceURL)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", serveIndex)
@@ -81,16 +76,11 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))))
-	mux.Handle("/admin/api/comments/get", adminAuth(middleware.AdminOnly(http.HandlerFunc(adminHandler.GetComment))))
+	mux.Handle("/admin/api/comments/get", adminAuth(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		adminHandler.ProxyComment(w, r, "/api/admin/comments/get")
+	}))))
 	mux.Handle("/admin/api/comments", adminAuth(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPut:
-			adminHandler.UpdateComment(w, r)
-		case http.MethodDelete:
-			adminHandler.DeleteComment(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
+		adminHandler.ProxyComment(w, r, "/api/admin/comments")
 	}))))
 	mux.Handle("/admin/api/projects/get", adminAuth(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		adminHandler.ProxyProject(w, r, "/api/admin/projects/get")

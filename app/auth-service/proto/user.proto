@@ -13,14 +13,6 @@ message User {
   // password is not included for security
 }
 
-message Comment {
-  int32 id = 1;
-  int32 author_id = 2;
-  int32 task_id = 3;
-  string content = 4;
-  string creation_date = 5;
-}
-
 message RegisterRequest {
   string email = 1;
   string password = 2;
@@ -58,20 +50,6 @@ message UpdateUserRequest {
 
 message DeleteUserRequest {
   int32 user_id = 1;
-}
-
-message GetCommentRequest {
-  optional int32 comment_id = 1;
-  optional int32 author_id = 2;
-  optional int32 task_id = 3;
-}
-
-message UpdateCommentRequest {
-  Comment comment = 1;
-}
-
-message DeleteCommentRequest {
-  int32 comment_id = 1;
 }
 
 message OperationResponse {
