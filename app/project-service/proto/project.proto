@@ -82,6 +82,10 @@ message TasksResponse {
   repeated Task tasks = 1;
 }
 
+message CommentsResponse {
+  repeated Comment comments = 1;
+}
+
 message ProjectMembersResponse {
   repeated User members = 1;
 }
@@ -114,6 +118,14 @@ message UpdateTaskStatusRequest {
   TaskStatus status = 1;
 }
 
+message CreateCommentRequest {
+  string content = 1;
+}
+
+message UpdateTaskCommentRequest {
+  string content = 1;
+}
+
 message IsUserManagerResponse {
   bool is_manager = 1;
 }
@@ -143,6 +155,20 @@ message UpdateTaskRequest {
 
 message DeleteTaskRequest {
   int32 task_id = 1;
+}
+
+message GetCommentRequest {
+  optional int32 comment_id = 1;
+  optional int32 author_id = 2;
+  optional int32 task_id = 3;
+}
+
+message UpdateCommentRequest {
+  Comment comment = 1;
+}
+
+message DeleteCommentRequest {
+  int32 comment_id = 1;
 }
 
 message OperationResponse {

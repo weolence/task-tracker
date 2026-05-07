@@ -45,6 +45,11 @@ func main() {
 		log.Fatalf("failed to connect to task database: %v", err)
 	}
 
+	commentRepo, err := repository.NewCommentRepository(ctx, dbURL)
+	if err != nil {
+		log.Fatalf("failed to connect to comment database: %v", err)
+	}
+
 	authServiceURL := os.Getenv("AUTH_SERVICE_URL")
 	if authServiceURL == "" {
 		authServiceURL = "http://localhost:8080"
@@ -53,9 +58,11 @@ func main() {
 	projectController := controller.NewProjectController(*projectRepo, *taskRepo, authServiceURL)
 
 	taskController := controller.NewTaskController(*taskRepo)
+	commentController := controller.NewCommentController(*commentRepo)
 
 	projectHandler := handler.NewProjectHandler(projectController)
 	taskHandler := handler.NewTaskHandler(taskController, projectController)
+	commentHandler := handler.NewCommentHandler(commentController, taskController, projectController)
 	adminHandler := handler.NewAdminHandler(projectController, taskController)
 
 	mux := http.NewServeMux()
@@ -79,7 +86,20 @@ func main() {
 	})))
 	mux.Handle("/api/tasks/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if strings.Contains(path, "/status") {
+		if strings.Contains(path, "/comments") {
+			switch r.Method {
+			case http.MethodGet:
+				commentHandler.GetTaskComments(w, r)
+			case http.MethodPost:
+				commentHandler.CreateTaskComment(w, r)
+			case http.MethodPut:
+				commentHandler.UpdateTaskComment(w, r)
+			case http.MethodDelete:
+				commentHandler.DeleteTaskComment(w, r)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+		} else if strings.Contains(path, "/status") {
 			taskHandler.UpdateTaskStatus(w, r)
 		} else if strings.Contains(path, "/close") {
 			taskHandler.CloseTask(w, r)
@@ -98,6 +118,7 @@ func main() {
 	mux.Handle("/api/project-members", authMiddleware(http.HandlerFunc(projectHandler.GetProjectMembers)))
 	mux.Handle("/api/project-members-details", authMiddleware(http.HandlerFunc(projectHandler.GetProjectMembersWithDetails)))
 	mux.Handle("/api/project-members/add", authMiddleware(http.HandlerFunc(projectHandler.AddProjectMember)))
+	mux.Handle("/api/project-manager/transfer", authMiddleware(http.HandlerFunc(projectHandler.TransferProjectManager)))
 	mux.Handle("/api/user-projects", authMiddleware(http.HandlerFunc(projectHandler.GetUserProjects)))
 	mux.Handle("/api/is-manager", authMiddleware(http.HandlerFunc(projectHandler.IsUserManager)))
 	mux.Handle("/api/project-info", authMiddleware(http.HandlerFunc(projectHandler.GetProjectInfo)))
@@ -119,6 +140,17 @@ func main() {
 			adminHandler.UpdateTask(w, r)
 		case http.MethodDelete:
 			adminHandler.DeleteTask(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+	mux.Handle("/api/admin/comments/get", authMiddleware(middleware.AdminOnly(http.HandlerFunc(commentHandler.GetComment))))
+	mux.Handle("/api/admin/comments", authMiddleware(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			commentHandler.UpdateComment(w, r)
+		case http.MethodDelete:
+			commentHandler.DeleteComment(w, r)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}

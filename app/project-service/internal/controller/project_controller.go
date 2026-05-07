@@ -295,6 +295,34 @@ func (controller *ProjectController) AddProjectMember(ctx context.Context, proje
 	}, nil
 }
 
+func (controller *ProjectController) TransferProjectManager(ctx context.Context, projectID int, currentManagerID int32, newManagerID int32) error {
+	if newManagerID == 0 {
+		return errors.New("new_manager_id is required")
+	}
+
+	isManager, err := controller.IsUserManager(ctx, currentManagerID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isManager {
+		return errors.New("access denied")
+	}
+
+	if newManagerID == currentManagerID {
+		return errors.New("manager cannot transfer project to themselves")
+	}
+
+	isMember, err := controller.projectRepository.IsUserMemberOfProject(ctx, newManagerID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return errors.New("selected user is not a project member")
+	}
+
+	return controller.projectRepository.TransferProjectManager(ctx, projectID, currentManagerID, newManagerID)
+}
+
 func (controller *ProjectController) GetUserProjects(ctx context.Context, userID int32) (dto.DashboardResponse, error) {
 	owned, err := controller.projectRepository.GetOwnedProjects(ctx, userID)
 	if err != nil {

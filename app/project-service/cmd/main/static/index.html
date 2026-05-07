@@ -83,6 +83,15 @@
       return params.get('token');
     };
 
+    const buildServiceUrl = (port, path = '/') => {
+      const url = new URL(window.location.href);
+      url.port = port;
+      url.pathname = path;
+      url.search = '';
+      url.hash = '';
+      return url.toString();
+    };
+
     const token = () => window.localStorage.getItem(storageKey);
     const setToken = (value) => window.localStorage.setItem(storageKey, value);
     const clearToken = () => window.localStorage.removeItem(storageKey);
@@ -96,7 +105,7 @@
 
       if (!token()) {
         document.getElementById('subtitle').textContent = 'Требуется вход через auth-service.';
-        showMessage('Пожалуйста, войдите через auth-service: http://localhost:8080', true);
+        showMessage(`Пожалуйста, войдите через auth-service: ${buildServiceUrl('8080')}`, true);
         return false;
       }
 
@@ -199,7 +208,7 @@
 
     document.getElementById('logout-button').addEventListener('click', () => {
       clearToken();
-      window.location.href = 'http://localhost:8080';
+      window.location.href = buildServiceUrl('8080');
     });
 
     if (requireAuth()) {

@@ -54,8 +54,9 @@
     .task-summary { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
     .task-description-block { color: #666; font-size: 0.95rem; line-height: 1.5; }
     .task-properties { margin-top: 16px; }
-    .task-actions { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+    .task-actions { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; align-items: center; }
     .task-actions .btn { min-width: 140px; }
+    .task-action-delete { margin-left: auto; order: 99; }
     .member-search { margin-bottom: 16px; }
     .member-search input { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
     .assign-list { margin-top: 15px; }
@@ -69,6 +70,9 @@
     .member-name:hover { color: #1d47a7; }
     .members-ul { list-style: none; padding: 0; }
     .members-ul li { padding: 8px 0; }
+    .member-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .member-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .member-transfer-btn { white-space: nowrap; }
     .members-section { margin-bottom: 20px; }
     .members-section:last-child { margin-bottom: 0; }
     .members-section h3 { margin: 0 0 10px; color: #374151; font-size: 16px; }
@@ -88,10 +92,26 @@
     .secondary-pool { background: #f8fafc; border-radius: 12px; padding: 16px; }
     .secondary-pool .tasks { display: flex; flex-wrap: wrap; gap: 8px; }
     .toggle-closed-btn { margin-top: 12px; }
+    #task-detail-modal .modal-content { width: 88%; max-width: 720px; }
+    .comments-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+    .comments-section h3 { margin: 0 0 14px; color: #1f2937; }
+    .comments-list { display: flex; flex-direction: column; gap: 12px; max-height: 320px; overflow-y: auto; margin-bottom: 16px; }
+    .comment-item { padding: 12px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; }
+    .comment-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .comment-meta { display: flex; flex-direction: column; gap: 4px; }
+    .comment-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .comment-author { font-weight: 600; color: #1f2937; }
+    .comment-date { font-size: 12px; color: #94a3b8; }
+    .comment-body { color: #374151; line-height: 1.5; white-space: normal; word-break: break-word; }
+    .btn-small { padding: 6px 12px; font-size: 12px; }
+    .comment-form textarea { min-height: 100px; }
+    .comment-form-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
     @media (max-width: 900px) {
       body { padding: 16px; }
       .container { padding: 18px; }
       .columns { flex-direction: column; }
+      .member-row { flex-direction: column; align-items: flex-start; }
+      .member-actions { width: 100%; justify-content: flex-start; }
     }
   </style>
 </head>
@@ -338,6 +358,8 @@
     let memberDetails = {};
     let projectManagerId = null;
     let selectedTask = null;
+    let selectedTaskComments = [];
+    let editingCommentId = null;
     let projectInfo = null;
     let closedTasksVisible = false;
 
@@ -399,6 +421,19 @@
       return `${member.surname} ${member.name}`;
     };
 
+    const getMemberDisplayName = (member) => `${member.name} ${member.surname}`;
+
+    const renderProjectMemberItem = (member, showTransferAction = false) => `
+      <li>
+        <div class="member-row">
+          <span class="member-name" onclick="showUserProfile(${member.id})">${escapeHtml(getMemberDisplayName(member))}</span>
+          ${showTransferAction
+            ? `<div class="member-actions"><button type="button" class="btn btn-secondary btn-small member-transfer-btn" onclick="transferProjectManager(${member.id})">Передать управление</button></div>`
+            : ''}
+        </div>
+      </li>
+    `;
+
     const escapeHtml = (value) => String(value)
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
@@ -408,6 +443,148 @@
 
     const isTaskClosed = (task) => task.status === 3;
     const getTaskStatusLabel = (task) => STATUS_LABELS[task.status] || 'Неизвестно';
+    const canWriteCommentForTask = (task) => Boolean(task) && (isManager || task.assignee_id === userId);
+    const getCommentAuthorName = (authorId) => getMemberFullName(authorId, `Пользователь #${authorId}`);
+    const canEditComment = (comment) => Boolean(comment) && comment.author_id === userId;
+    const canDeleteComment = (comment) => Boolean(comment) && (comment.author_id === userId || isManager);
+
+    const formatCommentDate = (value) => {
+      if (!value) {
+        return 'Дата неизвестна';
+      }
+
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+
+      return date.toLocaleString();
+    };
+
+    const renderCommentList = (comments, taskId) => {
+      const commentsList = document.getElementById('task-comments-list');
+      if (!commentsList || !selectedTask || selectedTask.id !== taskId) {
+        return;
+      }
+
+      if (!comments.length) {
+        commentsList.innerHTML = '<p class="section-note">Комментариев пока нет.</p>';
+        return;
+      }
+
+      commentsList.innerHTML = comments.map((comment) => {
+        const authorName = escapeHtml(getCommentAuthorName(comment.author_id));
+        const creationDate = escapeHtml(formatCommentDate(comment.creation_date));
+        const content = escapeHtml(comment.content || '').replaceAll('\n', '<br />');
+        const actions = [];
+        if (canEditComment(comment)) {
+          actions.push(`<button type="button" class="btn btn-secondary btn-small" onclick="startCommentEdit(${comment.id})">Редактировать</button>`);
+        }
+        if (canDeleteComment(comment)) {
+          actions.push(`<button type="button" class="btn btn-danger btn-small" onclick="deleteTaskComment(${comment.id})">Удалить</button>`);
+        }
+        const actionsHtml = actions.length
+          ? `<div class="comment-actions">${actions.join('')}</div>`
+          : '';
+
+        return `
+          <div class="comment-item">
+            <div class="comment-header">
+              <div class="comment-meta">
+                <span class="comment-author member-name" onclick="showUserProfile(${comment.author_id})">${authorName}</span>
+                <span class="comment-date">${creationDate}</span>
+              </div>
+              ${actionsHtml}
+            </div>
+            <div class="comment-body">${content}</div>
+          </div>
+        `;
+      }).join('');
+    };
+
+    const resetCommentForm = () => {
+      editingCommentId = null;
+      const input = document.getElementById('task-comment-input');
+      const submitButton = document.getElementById('task-comment-submit');
+      const cancelButton = document.getElementById('task-comment-cancel');
+      const title = document.getElementById('task-comment-form-title');
+
+      if (input) {
+        input.value = '';
+      }
+      if (submitButton) {
+        submitButton.textContent = 'Отправить комментарий';
+      }
+      if (cancelButton) {
+        cancelButton.style.display = 'none';
+      }
+      if (title) {
+        title.textContent = 'Новый комментарий';
+      }
+    };
+
+    const startCommentEdit = (commentId) => {
+      const comment = selectedTaskComments.find((item) => item.id === commentId);
+      if (!comment || !canEditComment(comment)) {
+        showMessage('Редактировать можно только свой комментарий.', true);
+        return;
+      }
+
+      editingCommentId = commentId;
+      const input = document.getElementById('task-comment-input');
+      const submitButton = document.getElementById('task-comment-submit');
+      const cancelButton = document.getElementById('task-comment-cancel');
+      const title = document.getElementById('task-comment-form-title');
+
+      if (input) {
+        input.value = comment.content || '';
+        input.focus();
+      }
+      if (submitButton) {
+        submitButton.textContent = 'Сохранить комментарий';
+      }
+      if (cancelButton) {
+        cancelButton.style.display = 'inline-flex';
+      }
+      if (title) {
+        title.textContent = 'Редактирование комментария';
+      }
+    };
+
+    const loadTaskComments = async (task) => {
+      const commentsList = document.getElementById('task-comments-list');
+      if (!commentsList) {
+        return;
+      }
+
+      commentsList.innerHTML = '<p class="section-note">Загрузка комментариев...</p>';
+
+      try {
+        const response = await apiRequest(`/api/tasks/${task.id}/comments`);
+        if (!selectedTask || selectedTask.id !== task.id) {
+          return;
+        }
+
+        const comments = Array.isArray(response)
+          ? response
+          : response && Array.isArray(response.comments)
+            ? response.comments
+            : [];
+
+        selectedTaskComments = comments;
+        if (editingCommentId && !selectedTaskComments.some((comment) => comment.id === editingCommentId)) {
+          resetCommentForm();
+        }
+        renderCommentList(comments, task.id);
+      } catch (error) {
+        if (!selectedTask || selectedTask.id !== task.id) {
+          return;
+        }
+
+        selectedTaskComments = [];
+        commentsList.innerHTML = `<p class="section-note">${escapeHtml(error.message)}</p>`;
+      }
+    };
 
     const renderTask = (task, draggable = true) => {
       const taskEl = document.createElement('div');
@@ -617,7 +794,7 @@
               <div class="members-section">
                 <h3>Менеджер проекта</h3>
                 <ul class="members-ul">
-                  <li><span class="member-name" onclick="showUserProfile(${manager.id})">${manager.name} ${manager.surname}</span></li>
+                  ${renderProjectMemberItem(manager)}
                 </ul>
               </div>
             `;
@@ -627,7 +804,7 @@
             <div class="members-section">
               <h3>Участники проекта</h3>
               ${otherMembers.length > 0
-                ? `<ul class="members-ul">${otherMembers.map(member => `<li><span class="member-name" onclick="showUserProfile(${member.id})">${member.name} ${member.surname}</span></li>`).join('')}</ul>`
+                ? `<ul class="members-ul">${otherMembers.map(member => renderProjectMemberItem(member, isManager)).join('')}</ul>`
                 : '<p>Нет участников</p>'}
             </div>
           `;
@@ -636,6 +813,36 @@
         } else {
           membersList.innerHTML = '<p>Нет участников</p>';
         }
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
+    const transferProjectManager = async (newManagerId) => {
+      if (!isManager) {
+        showMessage('Передача управления доступна только менеджеру.', true);
+        return;
+      }
+
+      const member = memberDetails[newManagerId];
+      if (!member) {
+        showMessage('Не удалось определить выбранного участника.', true);
+        return;
+      }
+
+      const confirmed = window.confirm(`Передать управление проектом пользователю ${getMemberDisplayName(member)}? После этого вы останетесь участником проекта.`);
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/project-manager/transfer?project_id=${projectId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ new_manager_id: newManagerId }),
+        });
+
+        await loadTasks();
+        showMessage(`Управление проектом передано пользователю ${getMemberDisplayName(member)}.`, false);
       } catch (error) {
         showMessage(error.message, true);
       }
@@ -729,13 +936,25 @@
 
     const showTaskDetail = (task) => {
       selectedTask = task;
+      selectedTaskComments = [];
+      editingCommentId = null;
       document.getElementById('task-detail-title').textContent = task.name;
       const content = document.getElementById('task-detail-content');
       const startDate = task.start_date ? new Date(task.start_date).toLocaleDateString() : 'Не начата';
       const canManageTask = isManager;
+      const canWriteComment = canWriteCommentForTask(task);
       const isClosedTask = isTaskClosed(task);
       const canCloseTask = canManageTask && !isTaskClosed(task) && task.status === 2;
       const closedDate = task.end_date ? new Date(task.end_date).toLocaleDateString() : 'Не закрыта';
+      const taskActionButtons = [];
+      if (!isClosedTask) {
+        taskActionButtons.push('<button type="button" class="btn btn-primary" onclick="showAssignModal()">Назначить</button>');
+        taskActionButtons.push('<button type="button" class="btn btn-secondary" onclick="unassignSelectedTask()">Отозвать</button>');
+      }
+      if (canCloseTask) {
+        taskActionButtons.push('<button type="button" class="btn btn-primary" onclick="closeSelectedTask()">Закрыть задачу</button>');
+      }
+      taskActionButtons.push('<button type="button" class="btn btn-danger task-action-delete" onclick="deleteSelectedTask()">Удалить</button>');
       const assigneeHtml = task.assignee_id != null
         ? `<span class="member-name detail-assignee-link" data-user-id="${task.assignee_id}">${escapeHtml(getMemberFullName(task.assignee_id, 'Пользователь'))}</span>`
         : 'Не назначена';
@@ -754,12 +973,29 @@
         </div>
         ${canManageTask ? `
           <div class="task-actions">
-            <button type="button" class="btn btn-danger" onclick="deleteSelectedTask()">Удалить</button>
-            ${!isClosedTask ? '<button type="button" class="btn btn-primary" onclick="showAssignModal()">Назначить</button>' : ''}
-            ${!isClosedTask ? '<button type="button" class="btn btn-secondary" onclick="unassignSelectedTask()">Отозвать</button>' : ''}
-            ${canCloseTask ? '<button type="button" class="btn btn-primary" onclick="closeSelectedTask()">Закрыть задачу</button>' : ''}
+            ${taskActionButtons.join('')}
           </div>
         ` : ''}
+        <section class="comments-section">
+          <h3>Комментарии</h3>
+          <div id="task-comments-list" class="comments-list">
+            <p class="section-note">Загрузка комментариев...</p>
+          </div>
+          ${canWriteComment ? `
+            <form class="comment-form" onsubmit="submitTaskComment(event)">
+              <div class="form-group">
+                <label id="task-comment-form-title" for="task-comment-input">Новый комментарий</label>
+                <textarea id="task-comment-input" placeholder="Опишите прогресс, уточнения или причину возврата задачи"></textarea>
+              </div>
+              <div class="comment-form-actions">
+                <button id="task-comment-submit" type="submit" class="btn btn-primary">Отправить комментарий</button>
+                <button id="task-comment-cancel" type="button" class="btn btn-secondary" style="display:none;" onclick="cancelCommentEdit()">Отмена</button>
+              </div>
+            </form>
+          ` : `
+            <p class="section-note">Добавлять комментарии может менеджер проекта или текущий исполнитель задачи.</p>
+          `}
+        </section>
       `;
       const detailAssigneeLink = content.querySelector('.detail-assignee-link');
       if (detailAssigneeLink) {
@@ -770,10 +1006,83 @@
       }
 
       document.getElementById('task-detail-modal').style.display = 'block';
+      loadTaskComments(task);
     };
 
     const hideTaskDetailModal = () => {
+      resetCommentForm();
+      selectedTaskComments = [];
+      selectedTask = null;
       document.getElementById('task-detail-modal').style.display = 'none';
+    };
+
+    const submitTaskComment = async (event) => {
+      event.preventDefault();
+      if (!selectedTask || !canWriteCommentForTask(selectedTask)) {
+        showMessage('Недостаточно прав для добавления комментария.', true);
+        return;
+      }
+
+      const input = document.getElementById('task-comment-input');
+      if (!input) {
+        return;
+      }
+
+      const content = input.value.trim();
+      if (!content) {
+        showMessage('Комментарий не может быть пустым.', true);
+        return;
+      }
+
+      const isEditingComment = editingCommentId !== null;
+
+      try {
+        await apiRequest(isEditingComment
+          ? `/api/tasks/${selectedTask.id}/comments/${editingCommentId}`
+          : `/api/tasks/${selectedTask.id}/comments`, {
+          method: isEditingComment ? 'PUT' : 'POST',
+          body: JSON.stringify({ content }),
+        });
+        resetCommentForm();
+        await loadTaskComments(selectedTask);
+        showMessage(isEditingComment ? 'Комментарий обновлён.' : 'Комментарий добавлен.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
+    const cancelCommentEdit = () => {
+      resetCommentForm();
+    };
+
+    const deleteTaskComment = async (commentId) => {
+      if (!selectedTask) {
+        return;
+      }
+
+      const comment = selectedTaskComments.find((item) => item.id === commentId);
+      if (!canDeleteComment(comment)) {
+        showMessage('Удалять можно только свой комментарий, либо любой комментарий менеджером.', true);
+        return;
+      }
+
+      const confirmed = window.confirm('Удалить этот комментарий?');
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/tasks/${selectedTask.id}/comments/${commentId}`, {
+          method: 'DELETE',
+        });
+        if (editingCommentId === commentId) {
+          resetCommentForm();
+        }
+        await loadTaskComments(selectedTask);
+        showMessage('Комментарий удалён.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
     };
 
     const deleteSelectedTask = async () => {
@@ -860,10 +1169,15 @@
     };
 
     window.assignTaskToSelected = assignTaskToSelected;
+    window.startCommentEdit = startCommentEdit;
+    window.cancelCommentEdit = cancelCommentEdit;
     window.deleteSelectedTask = deleteSelectedTask;
+    window.deleteTaskComment = deleteTaskComment;
     window.showAssignModal = showAssignModal;
     window.unassignSelectedTask = unassignSelectedTask;
     window.closeSelectedTask = closeSelectedTask;
+    window.submitTaskComment = submitTaskComment;
+    window.transferProjectManager = transferProjectManager;
 
     const showUserProfile = async (userId) => {
       try {

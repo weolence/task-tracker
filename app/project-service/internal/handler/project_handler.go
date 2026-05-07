@@ -331,6 +331,45 @@ func (handler *ProjectHandler) AddProjectMember(writer http.ResponseWriter, requ
 	writer.Write(bytes)
 }
 
+func (handler *ProjectHandler) TransferProjectManager(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPut {
+		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := middleware.GetUserID(request.Context())
+	if !ok {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := request.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(writer, "invalid project id", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		NewManagerID int32 `json:"new_manager_id"`
+	}
+	if err := json.NewDecoder(request.Body).Decode(&req); err != nil {
+		http.Error(writer, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	if err := handler.projectController.TransferProjectManager(request.Context(), projectID, userID, req.NewManagerID); err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "access denied" {
+			status = http.StatusForbidden
+		}
+		http.Error(writer, err.Error(), status)
+		return
+	}
+
+	writer.WriteHeader(http.StatusOK)
+}
+
 func (handler *ProjectHandler) GetUserProjects(writer http.ResponseWriter, request *http.Request) {
 	userIDStr := request.URL.Query().Get("user_id")
 	userID, err := strconv.Atoi(userIDStr)

@@ -289,6 +289,37 @@ func (projectRepository *ProjectRepository) AddProjectMember(ctx context.Context
 	return err
 }
 
+func (projectRepository *ProjectRepository) TransferProjectManager(ctx context.Context, projectID int, currentManagerID int32, newManagerID int32) error {
+	tx, err := projectRepository.Conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	cmdTag, err := tx.Exec(ctx, `
+		UPDATE projects
+		SET manager_id = $1
+		WHERE id = $2 AND manager_id = $3
+	`, newManagerID, projectID, currentManagerID)
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("project not found or manager mismatch")
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO project_members (project_id, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (project_id, user_id) DO NOTHING
+	`, projectID, currentManagerID); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (projectRepository *ProjectRepository) UpdateProject(ctx context.Context, project model.Project) error {
 	var endDate any
 	if project.EndDate != nil && *project.EndDate != "" {
