@@ -6,20 +6,21 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type UserRepository struct {
-	Conn *pgx.Conn
+	Conn *pgxpool.Pool
 }
 
 func NewUserRepository(ctx context.Context, dbLink string) (*UserRepository, error) {
-	conn, err := pgx.Connect(ctx, dbLink)
+	conn, err := pgxpool.New(ctx, dbLink)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := conn.Ping(ctx); err != nil {
-		conn.Close(ctx)
+		conn.Close()
 		return nil, err
 	}
 
