@@ -12,6 +12,7 @@ type Config struct {
 	HTTP            HTTPConfig        `yaml:"http"`
 	Postgres        PostgresConfig    `yaml:"postgres"`
 	AuthService     AuthServiceConfig `yaml:"auth_service"`
+	StaticDir       string            `yaml:"static_dir"`
 	ShutdownTimeout time.Duration     `yaml:"shutdown_timeout"`
 }
 
@@ -31,6 +32,7 @@ func Default() Config {
 	return Config{
 		HTTP:            HTTPConfig{Addr: ":8081"},
 		AuthService:     AuthServiceConfig{URL: "http://localhost:8080"},
+		StaticDir:       "static",
 		ShutdownTimeout: 10 * time.Second,
 	}
 }

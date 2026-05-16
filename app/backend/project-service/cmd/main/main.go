@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"flag"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -18,10 +18,6 @@ import (
 	appconfig "project-service/internal/config"
 	"project-service/internal/core/usecase"
 )
-
-//go:embed static/index.html
-//go:embed static/project.html
-var staticFiles embed.FS
 
 func main() {
 	if err := run(); err != nil {
@@ -68,8 +64,26 @@ func run() error {
 
 	authMW := httpadapter.AuthMiddleware(cfg.AuthService.URL)
 
+	serveHTML := func(filename string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			page, err := os.ReadFile(filepath.Join(cfg.StaticDir, filename))
+			if err != nil {
+				http.Error(w, "failed to load page", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(page)
+		}
+	}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", serveIndex)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		serveHTML("index.html")(w, r)
+	})
 	mux.Handle("/api/dashboard", authMW(http.HandlerFunc(projectHandler.Dashboard)))
 	mux.Handle("/api/projects", authMW(http.HandlerFunc(projectHandler.CreateProject)))
 	mux.Handle("/api/projects/", authMW(http.HandlerFunc(projectHandler.ProjectTasks)))
@@ -156,7 +170,13 @@ func run() error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))))
-	mux.HandleFunc("/project/", serveProjectPage)
+	mux.HandleFunc("/project/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/project/" || !strings.HasPrefix(r.URL.Path, "/project/") {
+			http.NotFound(w, r)
+			return
+		}
+		serveHTML("project.html")(w, r)
+	})
 
 	server := &http.Server{
 		Addr:              cfg.HTTP.Addr,
@@ -195,36 +215,4 @@ func resolveConfigPath() string {
 	configPath := flag.String("config", defaultPath, "path to YAML config file")
 	flag.Parse()
 	return *configPath
-}
-
-func serveIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-
-	page, err := staticFiles.ReadFile("static/index.html")
-	if err != nil {
-		http.Error(w, "failed to load page", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(page)
-}
-
-func serveProjectPage(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/project/" || !strings.HasPrefix(r.URL.Path, "/project/") {
-		http.NotFound(w, r)
-		return
-	}
-
-	page, err := staticFiles.ReadFile("static/project.html")
-	if err != nil {
-		http.Error(w, "failed to load page", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(page)
 }

@@ -18,7 +18,7 @@ services:
 
   auth-migrate:
     build:
-      context: ./auth-service
+      context: ./backend/auth-service
       dockerfile: Dockerfile.migrate
     depends_on:
       auth-db:
@@ -27,7 +27,9 @@ services:
       DATABASE_URL: postgres://postgres:postgres@auth-db:5432/auth_db?sslmode=disable
 
   auth-service:
-    build: ./auth-service
+    build:
+      context: .
+      dockerfile: backend/auth-service/Dockerfile
     restart: unless-stopped
     stdin_open: true
     tty: true
@@ -64,7 +66,7 @@ services:
   project-service:
     build:
       context: .
-      dockerfile: project-service/Dockerfile
+      dockerfile: backend/project-service/Dockerfile
     restart: unless-stopped
     depends_on:
       project-db:

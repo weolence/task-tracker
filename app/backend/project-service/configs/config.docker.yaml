@@ -7,4 +7,6 @@ postgres:
 auth_service:
   url: "http://auth-service:8080"
 
+static_dir: "/static"
+
 shutdown_timeout: 10s

@@ -13,6 +13,7 @@ type Config struct {
 	Postgres        PostgresConfig `yaml:"postgres"`
 	JWT             JWTConfig      `yaml:"jwt"`
 	Admin           AdminConfig    `yaml:"admin"`
+	StaticDir       string         `yaml:"static_dir"`
 	ShutdownTimeout time.Duration  `yaml:"shutdown_timeout"`
 }
 
@@ -36,6 +37,7 @@ func Default() Config {
 	return Config{
 		HTTP:            HTTPConfig{Addr: ":8080"},
 		Admin:           AdminConfig{ProjectServiceURL: "http://localhost:8081"},
+		StaticDir:       "static",
 		ShutdownTimeout: 10 * time.Second,
 	}
 }

@@ -10,4 +10,6 @@ jwt:
 admin:
   project_service_url: "http://project-service:8081"
 
+static_dir: "/static"
+
 shutdown_timeout: 10s

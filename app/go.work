@@ -1,4 +1,4 @@
 go 1.26.0
 
-use ./project-service
-use ./auth-service
+use ./backend/project-service
+use ./backend/auth-service

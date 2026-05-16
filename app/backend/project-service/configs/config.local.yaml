@@ -7,4 +7,6 @@ postgres:
 auth_service:
   url: "http://localhost:8080"
 
+static_dir: "../../frontend/project"
+
 shutdown_timeout: 10s

@@ -10,4 +10,6 @@ jwt:
 admin:
   project_service_url: "http://localhost:8081"
 
+static_dir: "../../frontend/auth"
+
 shutdown_timeout: 10s

@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -24,10 +24,6 @@ import (
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
-
-//go:embed static/index.html
-//go:embed static/admin.html
-var staticFiles embed.FS
 
 func main() {
 	if err := run(); err != nil {
@@ -58,9 +54,33 @@ func run() error {
 	authHandler := httpadapter.NewAuthHandler(auth)
 	adminHandler := httpadapter.NewAdminHandler(auth, cfg.Admin.ProjectServiceURL)
 
+	serveHTML := func(filename string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			page, err := os.ReadFile(filepath.Join(cfg.StaticDir, filename))
+			if err != nil {
+				http.Error(w, "failed to load page", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(page)
+		}
+	}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", serveIndex)
-	mux.HandleFunc("/admin", serveAdminPage)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		serveHTML("index.html")(w, r)
+	})
+	mux.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin" {
+			http.NotFound(w, r)
+			return
+		}
+		serveHTML("admin.html")(w, r)
+	})
 	mux.HandleFunc("/login", authHandler.Login)
 	mux.HandleFunc("/validate-token", authHandler.ValidateToken)
 
@@ -254,36 +274,4 @@ func askValue(reader *bufio.Reader, prompt string) string {
 	fmt.Printf("%s: ", prompt)
 	value, _ := reader.ReadString('\n')
 	return strings.TrimSpace(value)
-}
-
-func serveIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-
-	page, err := staticFiles.ReadFile("static/index.html")
-	if err != nil {
-		http.Error(w, "failed to load page", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(page)
-}
-
-func serveAdminPage(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/admin" {
-		http.NotFound(w, r)
-		return
-	}
-
-	page, err := staticFiles.ReadFile("static/admin.html")
-	if err != nil {
-		http.Error(w, "failed to load page", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(page)
 }
