@@ -1,0 +1,12 @@
+FROM postgres:16-alpine
+
+WORKDIR /app
+
+RUN apk add --no-cache bash
+
+COPY migrations /app/migrations
+COPY scripts /app/scripts
+
+RUN chmod +x /app/scripts/*.sh
+
+ENTRYPOINT ["/app/scripts/migrate-up.sh"]

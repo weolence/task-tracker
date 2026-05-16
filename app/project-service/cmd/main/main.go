@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -11,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"project-service/internal/controller"
-	"project-service/internal/handler"
-	"project-service/internal/middleware"
-	"project-service/internal/repository"
+	httpadapter "project-service/internal/adapters/http"
+	postgresadapter "project-service/internal/adapters/postgres"
+	appconfig "project-service/internal/config"
+	"project-service/internal/core/usecase"
 )
 
 //go:embed static/index.html
@@ -22,69 +24,67 @@ import (
 var staticFiles embed.FS
 
 func main() {
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
+	cfg, err := appconfig.Load(resolveConfigPath())
+	if err != nil {
+		return err
 	}
 
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
-	}
+	log.Printf("loaded config: %s", cfg)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	projectRepo, err := repository.NewProjectRepository(ctx, dbURL)
+	pool, err := postgresadapter.NewPool(initCtx, cfg.Postgres)
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+		return err
+	}
+	defer pool.Close()
+
+	if err := postgresadapter.InitSchema(initCtx, pool); err != nil {
+		return err
 	}
 
-	taskRepo, err := repository.NewTaskRepository(ctx, dbURL)
-	if err != nil {
-		log.Fatalf("failed to connect to task database: %v", err)
-	}
+	projectRepo := postgresadapter.NewProjectRepository(pool)
+	taskRepo := postgresadapter.NewTaskRepository(pool)
+	commentRepo := postgresadapter.NewCommentRepository(pool)
 
-	commentRepo, err := repository.NewCommentRepository(ctx, dbURL)
-	if err != nil {
-		log.Fatalf("failed to connect to comment database: %v", err)
-	}
+	projectUseCase := usecase.NewProjectUseCase(projectRepo, taskRepo, cfg.AuthService.URL)
+	taskUseCase := usecase.NewTaskUseCase(taskRepo)
+	commentUseCase := usecase.NewCommentUseCase(commentRepo)
 
-	authServiceURL := os.Getenv("AUTH_SERVICE_URL")
-	if authServiceURL == "" {
-		authServiceURL = "http://localhost:8080"
-	}
+	projectHandler := httpadapter.NewProjectHandler(projectUseCase)
+	taskHandler := httpadapter.NewTaskHandler(taskUseCase, projectUseCase)
+	commentHandler := httpadapter.NewCommentHandler(commentUseCase, taskUseCase, projectUseCase)
+	adminHandler := httpadapter.NewAdminHandler(projectUseCase, taskUseCase)
 
-	projectController := controller.NewProjectController(*projectRepo, *taskRepo, authServiceURL)
-
-	taskController := controller.NewTaskController(*taskRepo)
-	commentController := controller.NewCommentController(*commentRepo)
-
-	projectHandler := handler.NewProjectHandler(projectController)
-	taskHandler := handler.NewTaskHandler(taskController, projectController)
-	commentHandler := handler.NewCommentHandler(commentController, taskController, projectController)
-	adminHandler := handler.NewAdminHandler(projectController, taskController)
+	authMW := httpadapter.AuthMiddleware(cfg.AuthService.URL)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", serveIndex)
+	mux.Handle("/api/dashboard", authMW(http.HandlerFunc(projectHandler.Dashboard)))
+	mux.Handle("/api/projects", authMW(http.HandlerFunc(projectHandler.CreateProject)))
+	mux.Handle("/api/projects/", authMW(http.HandlerFunc(projectHandler.ProjectTasks)))
 
-	authMiddleware := middleware.AuthMiddleware()
-	mux.Handle("/api/dashboard", authMiddleware(http.HandlerFunc(projectHandler.Dashboard)))
-	mux.Handle("/api/projects", authMiddleware(http.HandlerFunc(projectHandler.CreateProject)))
-	mux.Handle("/api/projects/", authMiddleware(http.HandlerFunc(projectHandler.ProjectTasks)))
-
-	// Task endpoints
-	mux.Handle("/api/my-tasks", authMiddleware(http.HandlerFunc(taskHandler.GetMyTasks)))
-	mux.Handle("/api/project-tasks", authMiddleware(http.HandlerFunc(taskHandler.GetAllProjectTasks)))
-	mux.Handle("/api/closed-project-tasks", authMiddleware(http.HandlerFunc(taskHandler.GetClosedProjectTasks)))
-	mux.Handle("/api/tasks", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/my-tasks", authMW(http.HandlerFunc(taskHandler.GetMyTasks)))
+	mux.Handle("/api/project-tasks", authMW(http.HandlerFunc(taskHandler.GetAllProjectTasks)))
+	mux.Handle("/api/closed-project-tasks", authMW(http.HandlerFunc(taskHandler.GetClosedProjectTasks)))
+	mux.Handle("/api/tasks", authMW(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			taskHandler.CreateTask(w, r)
 		} else {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})))
-	mux.Handle("/api/tasks/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/tasks/", authMW(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if strings.Contains(path, "/comments") {
 			switch r.Method {
@@ -114,16 +114,17 @@ func main() {
 		}
 	})))
 
-	mux.Handle("/api/user-id", authMiddleware(http.HandlerFunc(projectHandler.GetUserID)))
-	mux.Handle("/api/project-members", authMiddleware(http.HandlerFunc(projectHandler.GetProjectMembers)))
-	mux.Handle("/api/project-members-details", authMiddleware(http.HandlerFunc(projectHandler.GetProjectMembersWithDetails)))
-	mux.Handle("/api/project-members/add", authMiddleware(http.HandlerFunc(projectHandler.AddProjectMember)))
-	mux.Handle("/api/project-manager/transfer", authMiddleware(http.HandlerFunc(projectHandler.TransferProjectManager)))
-	mux.Handle("/api/user-projects", authMiddleware(http.HandlerFunc(projectHandler.GetUserProjects)))
-	mux.Handle("/api/is-manager", authMiddleware(http.HandlerFunc(projectHandler.IsUserManager)))
-	mux.Handle("/api/project-info", authMiddleware(http.HandlerFunc(projectHandler.GetProjectInfo)))
-	mux.Handle("/api/admin/projects/get", authMiddleware(middleware.AdminOnly(http.HandlerFunc(adminHandler.GetProject))))
-	mux.Handle("/api/admin/projects", authMiddleware(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/user-id", authMW(http.HandlerFunc(projectHandler.GetUserID)))
+	mux.Handle("/api/project-members", authMW(http.HandlerFunc(projectHandler.GetProjectMembers)))
+	mux.Handle("/api/project-members-details", authMW(http.HandlerFunc(projectHandler.GetProjectMembersWithDetails)))
+	mux.Handle("/api/project-members/add", authMW(http.HandlerFunc(projectHandler.AddProjectMember)))
+	mux.Handle("/api/project-manager/transfer", authMW(http.HandlerFunc(projectHandler.TransferProjectManager)))
+	mux.Handle("/api/user-projects", authMW(http.HandlerFunc(projectHandler.GetUserProjects)))
+	mux.Handle("/api/is-manager", authMW(http.HandlerFunc(projectHandler.IsUserManager)))
+	mux.Handle("/api/project-info", authMW(http.HandlerFunc(projectHandler.GetProjectInfo)))
+
+	mux.Handle("/api/admin/projects/get", authMW(httpadapter.AdminOnly(http.HandlerFunc(adminHandler.GetProject))))
+	mux.Handle("/api/admin/projects", authMW(httpadapter.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPut:
 			adminHandler.UpdateProject(w, r)
@@ -133,8 +134,8 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))))
-	mux.Handle("/api/admin/tasks/get", authMiddleware(middleware.AdminOnly(http.HandlerFunc(adminHandler.GetTask))))
-	mux.Handle("/api/admin/tasks", authMiddleware(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/admin/tasks/get", authMW(httpadapter.AdminOnly(http.HandlerFunc(adminHandler.GetTask))))
+	mux.Handle("/api/admin/tasks", authMW(httpadapter.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPut:
 			adminHandler.UpdateTask(w, r)
@@ -144,8 +145,8 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))))
-	mux.Handle("/api/admin/comments/get", authMiddleware(middleware.AdminOnly(http.HandlerFunc(commentHandler.GetComment))))
-	mux.Handle("/api/admin/comments", authMiddleware(middleware.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/admin/comments/get", authMW(httpadapter.AdminOnly(http.HandlerFunc(commentHandler.GetComment))))
+	mux.Handle("/api/admin/comments", authMW(httpadapter.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPut:
 			commentHandler.UpdateComment(w, r)
@@ -157,32 +158,43 @@ func main() {
 	}))))
 	mux.HandleFunc("/project/", serveProjectPage)
 
-	serverPort := os.Getenv("PORT")
-	if serverPort == "" {
-		serverPort = "8081"
-	}
-
 	server := &http.Server{
-		Addr:    ":" + serverPort,
-		Handler: mux,
+		Addr:              cfg.HTTP.Addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {
-		log.Printf("starting project-service on :%s", serverPort)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server stopped: %v", err)
+		log.Printf("starting project-service on %s", cfg.HTTP.Addr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("server error: %v", err)
 		}
 	}()
 
-	shutdownCh := make(chan os.Signal, 1)
-	signal.Notify(shutdownCh, os.Interrupt, syscall.SIGTERM)
-
-	<-shutdownCh
+	<-ctx.Done()
 	log.Println("shutdown signal received")
 
-	if err := server.Shutdown(context.Background()); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("server shutdown error: %v", err)
 	}
+
+	return nil
+}
+
+func resolveConfigPath() string {
+	defaultPath := appconfig.DefaultPath
+	if v := os.Getenv("PROJECT_CONFIG_PATH"); v != "" {
+		defaultPath = v
+	}
+	configPath := flag.String("config", defaultPath, "path to YAML config file")
+	flag.Parse()
+	return *configPath
 }
 
 func serveIndex(w http.ResponseWriter, r *http.Request) {

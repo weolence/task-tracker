@@ -1,0 +1,10 @@
+http:
+  addr: ":8081"
+
+postgres:
+  url: "postgres://postgres:postgres@localhost:5433/project_db?sslmode=disable"
+
+auth_service:
+  url: "http://localhost:8080"
+
+shutdown_timeout: 10s

@@ -1,12 +1,21 @@
-FROM golang:1.26-alpine
+# build stage
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . .
-RUN go build -o ./project-service ./cmd/main
+COPY . ./
+WORKDIR /app/cmd/main
+RUN go build -o /project-service .
+
+# runtime stage
+FROM alpine:latest
+RUN apk add --no-cache ca-certificates
+
+COPY --from=builder /project-service /project-service
+COPY configs/ /configs/
 
 EXPOSE 8081
-CMD ["./project-service"]
+ENTRYPOINT ["/project-service", "-config", "/configs/config.docker.yaml"]
