@@ -1179,11 +1179,11 @@
     window.submitTaskComment = submitTaskComment;
     window.transferProjectManager = transferProjectManager;
 
-    const showUserProfile = async (userId) => {
+    const showUserProfile = async (profileUserId) => {
       try {
-        const userProjects = await apiRequest(`/api/user-projects?user_id=${userId}`);
-        const user = memberDetails[userId];
-        
+        const userProjects = await apiRequest(`/api/user-projects?user_id=${profileUserId}`);
+        const user = memberDetails[profileUserId];
+
         if (!user) {
           showMessage('Не удалось загрузить информацию о пользователе', true);
           return;

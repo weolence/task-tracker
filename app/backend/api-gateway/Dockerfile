@@ -8,20 +8,19 @@ COPY backend/auth-service/go.mod    backend/auth-service/go.sum    ./backend/aut
 COPY backend/project-service/go.mod backend/project-service/go.sum ./backend/project-service/
 COPY backend/api-gateway/go.mod     backend/api-gateway/go.sum     ./backend/api-gateway/
 
-RUN cd backend/project-service && go mod download
+RUN cd backend/api-gateway && go mod download
 
 COPY backend/ ./backend/
 
-WORKDIR /app/backend/project-service/cmd/main
-RUN go build -o /project-service .
+WORKDIR /app/backend/api-gateway/cmd/main
+RUN go build -o /api-gateway .
 
 # runtime stage
 FROM alpine:latest
 RUN apk add --no-cache ca-certificates
 
-COPY --from=builder /project-service /project-service
-COPY backend/project-service/configs/ /configs/
-COPY frontend/project/ /static/
+COPY --from=builder /api-gateway /api-gateway
+COPY backend/api-gateway/configs/ /configs/
 
-EXPOSE 8081
-ENTRYPOINT ["/project-service", "-config", "/configs/config.docker.yaml"]
+EXPOSE 8000
+ENTRYPOINT ["/api-gateway", "-config", "/configs/config.docker.yaml"]

@@ -10,6 +10,7 @@ const DefaultPath = "configs/config.local.yaml"
 
 type Config struct {
 	HTTP            HTTPConfig     `yaml:"http"`
+	GRPC            GRPCConfig     `yaml:"grpc"`
 	Postgres        PostgresConfig `yaml:"postgres"`
 	JWT             JWTConfig      `yaml:"jwt"`
 	Admin           AdminConfig    `yaml:"admin"`
@@ -18,6 +19,10 @@ type Config struct {
 }
 
 type HTTPConfig struct {
+	Addr string `yaml:"addr"`
+}
+
+type GRPCConfig struct {
 	Addr string `yaml:"addr"`
 }
 
@@ -36,6 +41,7 @@ type AdminConfig struct {
 func Default() Config {
 	return Config{
 		HTTP:            HTTPConfig{Addr: ":8080"},
+		GRPC:            GRPCConfig{Addr: ":9090"},
 		Admin:           AdminConfig{ProjectServiceURL: "http://localhost:8081"},
 		StaticDir:       "static",
 		ShutdownTimeout: 10 * time.Second,

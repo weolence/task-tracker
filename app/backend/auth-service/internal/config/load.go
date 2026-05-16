@@ -53,6 +53,9 @@ func overrideFromEnv(cfg *Config) error {
 	if v := strings.TrimSpace(os.Getenv("AUTH_HTTP_ADDR")); v != "" {
 		cfg.HTTP.Addr = v
 	}
+	if v := strings.TrimSpace(os.Getenv("AUTH_GRPC_ADDR")); v != "" {
+		cfg.GRPC.Addr = v
+	}
 	if v := strings.TrimSpace(os.Getenv("DATABASE_URL")); v != "" {
 		cfg.Postgres.URL = v
 	}

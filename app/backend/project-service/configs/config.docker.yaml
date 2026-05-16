@@ -1,6 +1,9 @@
 http:
   addr: ":8081"
 
+grpc:
+  addr: ":9091"
+
 postgres:
   url: "postgres://postgres:postgres@db:5432/project_db?sslmode=disable"
 

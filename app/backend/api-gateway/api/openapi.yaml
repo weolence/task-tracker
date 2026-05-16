@@ -1,0 +1,647 @@
+openapi: "3.1.0"
+info:
+  title: Task Tracker API
+  version: "1.0.0"
+  description: |
+    External REST API exposed by the api-gateway.
+
+    **Internal** service-to-service communication (api-gateway → auth-service,
+    api-gateway → project-service) uses gRPC and is defined separately in
+    `auth-service/api/proto/auth_service.proto` and
+    `project-service/api/proto/project_service.proto`.
+    Those contracts are intentionally NOT duplicated here.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development (via api-gateway)
+
+# ── Security ─────────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string, minLength: 6 }
+
+    LoginResponse:
+      type: object
+      properties:
+        token: { type: string }
+
+    RegisterRequest:
+      type: object
+      required: [email, password, name, surname]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string, minLength: 6 }
+        name:     { type: string }
+        surname:  { type: string }
+
+    User:
+      type: object
+      properties:
+        id:      { type: integer }
+        email:   { type: string }
+        name:    { type: string }
+        surname: { type: string }
+        role:    { type: string, enum: [user, admin] }
+
+    Project:
+      type: object
+      properties:
+        id:          { type: integer }
+        manager_id:  { type: integer }
+        name:        { type: string }
+        description: { type: string }
+        status:      { type: string, enum: [PROJECT_STATUS_IN_WORK, PROJECT_STATUS_ENDED] }
+        start_date:  { type: string, format: date-time }
+        end_date:    { type: string, format: date-time, nullable: true }
+
+    Task:
+      type: object
+      properties:
+        id:          { type: integer }
+        project_id:  { type: integer }
+        assignee_id: { type: integer, nullable: true }
+        name:        { type: string }
+        description: { type: string, nullable: true }
+        priority:    { type: string, enum: [TASK_PRIORITY_LOW, TASK_PRIORITY_MEDIUM, TASK_PRIORITY_HIGH] }
+        difficulty:  { type: string, enum: [TASK_DIFFICULTY_EASY, TASK_DIFFICULTY_MEDIUM, TASK_DIFFICULTY_HARD] }
+        status:      { type: string, enum: [TASK_STATUS_NOT_STARTED, TASK_STATUS_IN_WORK, TASK_STATUS_ON_REVIEW, TASK_STATUS_COMPLETED] }
+        start_date:  { type: string, format: date-time, nullable: true }
+        end_date:    { type: string, format: date-time, nullable: true }
+
+    Comment:
+      type: object
+      properties:
+        id:            { type: integer }
+        author_id:     { type: integer }
+        task_id:       { type: integer }
+        content:       { type: string }
+        creation_date: { type: string, format: date-time }
+
+    Dashboard:
+      type: object
+      properties:
+        owned_projects:  { type: array, items: { $ref: "#/components/schemas/Project" } }
+        member_projects: { type: array, items: { $ref: "#/components/schemas/Project" } }
+
+    OperationResponse:
+      type: object
+      properties:
+        message: { type: string }
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── Auth ────────────────────────────────────────────────────────────────────
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201": { description: User created }
+        "400": { description: Validation error }
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and receive a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401": { description: Invalid credentials }
+
+  /api/auth/user-info:
+    get:
+      tags: [Auth]
+      summary: Get info about the authenticated user
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  # ── Dashboard ────────────────────────────────────────────────────────────────
+  /api/dashboard:
+    get:
+      tags: [Projects]
+      summary: Get owned and member projects for the current user
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dashboard" }
+
+  # ── Projects ─────────────────────────────────────────────────────────────────
+  /api/projects:
+    post:
+      tags: [Projects]
+      summary: Create a new project
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, description]
+              properties:
+                name:        { type: string }
+                description: { type: string }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+
+  /api/projects/{id}/tasks:
+    get:
+      tags: [Projects]
+      summary: Get tasks for a project (members only)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+
+  /api/project-info:
+    get:
+      tags: [Projects]
+      summary: Get project details
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+
+  /api/project-members:
+    get:
+      tags: [Projects]
+      summary: Get member IDs for a project
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members: { type: array, items: { type: integer } }
+
+  /api/project-members-details:
+    get:
+      tags: [Projects]
+      summary: Get full user objects for project members
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members: { type: array, items: { $ref: "#/components/schemas/User" } }
+
+  /api/project-members/add:
+    post:
+      tags: [Projects]
+      summary: Add a member to a project by email (manager only)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "201": { description: Member added }
+
+  /api/project-manager/transfer:
+    put:
+      tags: [Projects]
+      summary: Transfer project manager role (current manager only)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_manager_id]
+              properties:
+                new_manager_id: { type: integer }
+      responses:
+        "200": { description: Manager transferred }
+
+  /api/is-manager:
+    get:
+      tags: [Projects]
+      summary: Check if the current user is the project manager
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_manager: { type: boolean }
+
+  /api/user-projects:
+    get:
+      tags: [Projects]
+      summary: Get projects owned by and membership of a given user
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: user_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dashboard" }
+
+  # ── Tasks ─────────────────────────────────────────────────────────────────────
+  /api/tasks:
+    post:
+      tags: [Tasks]
+      summary: Create a task (manager only)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, name, priority, difficulty]
+              properties:
+                project_id:  { type: integer }
+                name:        { type: string }
+                description: { type: string }
+                priority:    { type: integer, description: "1=LOW 2=MEDIUM 3=HIGH" }
+                difficulty:  { type: integer, description: "1=EASY 2=MEDIUM 3=HARD" }
+      responses:
+        "201": { description: Task created }
+
+  /api/my-tasks:
+    get:
+      tags: [Tasks]
+      summary: Get tasks assigned to the current user within a project
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+
+  /api/project-tasks:
+    get:
+      tags: [Tasks]
+      summary: Get all tasks in a project (manager only)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+
+  /api/closed-project-tasks:
+    get:
+      tags: [Tasks]
+      summary: Get closed tasks in a project (manager only)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+
+  /api/tasks/{id}/status:
+    put:
+      tags: [Tasks]
+      summary: Update task status (assignee or manager)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: integer, description: "1=NOT_STARTED 2=IN_WORK 3=ON_REVIEW" }
+      responses:
+        "200": { description: Status updated }
+
+  /api/tasks/{id}/close:
+    put:
+      tags: [Tasks]
+      summary: Close a task that is ON_REVIEW (manager only)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Task closed }
+
+  /api/tasks/{id}/assign:
+    put:
+      tags: [Tasks]
+      summary: Assign a task (members may self-assign; manager may assign any member)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assignee_id]
+              properties:
+                assignee_id: { type: integer }
+      responses:
+        "200": { description: Task assigned }
+
+  /api/tasks/{id}/unassign:
+    put:
+      tags: [Tasks]
+      summary: Unassign a task (manager only)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Task unassigned }
+
+  /api/tasks/{id}:
+    delete:
+      tags: [Tasks]
+      summary: Delete a task (manager only)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Task deleted }
+
+  # ── Comments ─────────────────────────────────────────────────────────────────
+  /api/tasks/{id}/comments:
+    get:
+      tags: [Comments]
+      summary: List comments on a task
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comments: { type: array, items: { $ref: "#/components/schemas/Comment" } }
+    post:
+      tags: [Comments]
+      summary: Add a comment to a task
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Comment" }
+
+  /api/tasks/{id}/comments/{commentId}:
+    put:
+      tags: [Comments]
+      summary: Update a comment (author only)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id,        in: path, required: true, schema: { type: integer } }
+        - { name: commentId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        "200": { description: Comment updated }
+    delete:
+      tags: [Comments]
+      summary: Delete a comment (author or manager)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id,        in: path, required: true, schema: { type: integer } }
+        - { name: commentId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Comment deleted }
+
+  # ── Admin ─────────────────────────────────────────────────────────────────────
+  /api/admin/users/get:
+    get:
+      tags: [Admin]
+      summary: Get a user by ID or email
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /api/admin/users:
+    put:
+      tags: [Admin]
+      summary: Update a user
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResponse" }
+    delete:
+      tags: [Admin]
+      summary: Delete a user
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResponse" }
+
+  /api/admin/projects/get:
+    get:
+      tags: [Admin]
+      summary: Get a project by ID or name
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+
+  /api/admin/projects:
+    put:
+      tags: [Admin]
+      summary: Update a project
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResponse" }
+    delete:
+      tags: [Admin]
+      summary: Delete a project
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResponse" }
+
+  /api/admin/tasks/get:
+    get:
+      tags: [Admin]
+      summary: Get a task by ID, project or name
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+
+  /api/admin/tasks:
+    put:
+      tags: [Admin]
+      summary: Update a task
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResponse" }
+    delete:
+      tags: [Admin]
+      summary: Delete a task
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResponse" }
+
+  /api/admin/comments/get:
+    get:
+      tags: [Admin]
+      summary: Get a comment by ID, author or task
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Comment" }
+
+  /api/admin/comments:
+    put:
+      tags: [Admin]
+      summary: Update a comment
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResponse" }
+    delete:
+      tags: [Admin]
+      summary: Delete a comment
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResponse" }

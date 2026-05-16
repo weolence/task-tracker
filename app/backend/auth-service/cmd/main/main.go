@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	authsvcv1 "auth-service/api/proto/authsvcv1"
+	grpcadapter "auth-service/internal/adapters/grpc"
 	httpadapter "auth-service/internal/adapters/http"
 	postgresadapter "auth-service/internal/adapters/postgres"
 	appconfig "auth-service/internal/config"
@@ -23,6 +26,7 @@ import (
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -85,7 +89,7 @@ func run() error {
 	mux.HandleFunc("/validate-token", authHandler.ValidateToken)
 
 	authMW := httpadapter.AuthMiddleware([]byte(cfg.JWT.Secret))
-	mux.Handle("/user-info", authMW(http.HandlerFunc(authHandler.GetUserInfo)))
+	mux.HandleFunc("/user-info", authHandler.GetUserInfo)
 
 	adminAuth := authMW
 	mux.Handle("/admin/api/users/get", adminAuth(httpadapter.AdminOnly(http.HandlerFunc(adminHandler.GetUser))))
@@ -128,9 +132,22 @@ func run() error {
 	}
 
 	go func() {
-		log.Printf("starting auth-service on %s", cfg.HTTP.Addr)
+		log.Printf("starting auth-service HTTP on %s", cfg.HTTP.Addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("server error: %v", err)
+			log.Printf("HTTP server error: %v", err)
+		}
+	}()
+
+	grpcServer := grpc.NewServer()
+	authsvcv1.RegisterAuthServiceServer(grpcServer, grpcadapter.NewAuthServer(auth))
+	grpcListener, err := net.Listen("tcp", cfg.GRPC.Addr)
+	if err != nil {
+		return fmt.Errorf("gRPC listen: %w", err)
+	}
+	go func() {
+		log.Printf("starting auth-service gRPC on %s", cfg.GRPC.Addr)
+		if err := grpcServer.Serve(grpcListener); err != nil {
+			log.Printf("gRPC server error: %v", err)
 		}
 	}()
 
@@ -150,6 +167,8 @@ func run() error {
 	case <-consoleDone:
 		log.Println("console requested shutdown")
 	}
+
+	grpcServer.GracefulStop()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer shutdownCancel()

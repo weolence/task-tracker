@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package authsvcv1;
+
+option go_package = "auth-service/api/proto/authsvcv1";
+
+import "user.proto";
+
+// AuthService defines the internal gRPC interface for the auth-service.
+// This is NOT the external API — external API is described in api-gateway/api/openapi.yaml.
+service AuthService {
+  rpc Register(userv1.RegisterRequest) returns (userv1.OperationResponse);
+  rpc Login(userv1.LoginRequest)       returns (userv1.LoginResponse);
+
+  // ValidateToken is called by the api-gateway on every protected request
+  // to resolve user identity before forwarding to downstream services.
+  rpc ValidateToken(userv1.ValidateTokenRequest) returns (userv1.ValidateTokenResponse);
+
+  rpc GetUserInfo(userv1.GetUserRequest) returns (userv1.User);
+
+  // Admin operations
+  rpc GetUser(userv1.GetUserRequest)       returns (userv1.User);
+  rpc UpdateUser(userv1.UpdateUserRequest) returns (userv1.OperationResponse);
+  rpc DeleteUser(userv1.DeleteUserRequest) returns (userv1.OperationResponse);
+}

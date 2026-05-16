@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package projectsvcv1;
+
+option go_package = "project-service/api/proto/projectsvcv1";
+
+import "project.proto";
+
+// Additional request messages for gRPC methods whose parameters don't map
+// cleanly to the existing message types. User identity is NOT embedded here —
+// it is passed as gRPC metadata (user-id, user-role) by the api-gateway.
+
+message Empty {}
+
+message ProjectIdRequest  { int32 project_id = 1; }
+message TaskIdRequest     { int32 task_id    = 1; }
+
+message UserProjectsRequest { int32 user_id = 1; }
+
+message AddMemberRequest {
+  int32  project_id = 1;
+  string email      = 2;
+}
+
+message TransferManagerRequest {
+  int32 project_id    = 1;
+  int32 new_manager_id = 2;
+}
+
+message IsManagerRequest { int32 project_id = 1; }
+
+message UpdateTaskStatusGrpcRequest {
+  int32                   task_id = 1;
+  projectv1.TaskStatus    status  = 2;
+}
+
+message AssignTaskGrpcRequest {
+  int32 task_id     = 1;
+  int32 assignee_id = 2;
+}
+
+message CreateCommentGrpcRequest {
+  int32  task_id = 1;
+  string content = 2;
+}
+
+message UpdateCommentGrpcRequest {
+  int32  task_id    = 1;
+  int32  comment_id = 2;
+  string content    = 3;
+}
+
+message DeleteCommentGrpcRequest {
+  int32 task_id    = 1;
+  int32 comment_id = 2;
+}
+
+// ProjectService defines the internal gRPC interface for the project-service.
+// This is NOT the external API — external API is described in api-gateway/api/openapi.yaml.
+service ProjectService {
+  // --- Dashboard ---
+  rpc GetDashboard(Empty) returns (projectv1.DashboardResponse);
+
+  // --- Projects ---
+  rpc CreateProject(projectv1.CreateProjectRequest)     returns (projectv1.CreateProjectResponse);
+  rpc GetProjectTasks(ProjectIdRequest)                 returns (projectv1.TasksResponse);
+  rpc GetProjectInfo(ProjectIdRequest)                  returns (projectv1.Project);
+  rpc GetProjectMembers(ProjectIdRequest)               returns (projectv1.ProjectMemberIdsResponse);
+  rpc GetProjectMembersDetails(ProjectIdRequest)        returns (projectv1.ProjectMembersResponse);
+  rpc AddProjectMember(AddMemberRequest)                returns (projectv1.OperationResponse);
+  rpc TransferProjectManager(TransferManagerRequest)    returns (projectv1.OperationResponse);
+  rpc IsUserManager(IsManagerRequest)                   returns (projectv1.IsUserManagerResponse);
+  rpc GetUserProjects(UserProjectsRequest)              returns (projectv1.DashboardResponse);
+
+  // --- Tasks ---
+  rpc CreateTask(projectv1.CreateTaskRequest)           returns (projectv1.Task);
+  rpc GetMyTasks(ProjectIdRequest)                      returns (projectv1.TasksResponse);
+  rpc GetAllProjectTasks(ProjectIdRequest)              returns (projectv1.TasksResponse);
+  rpc GetClosedProjectTasks(ProjectIdRequest)           returns (projectv1.TasksResponse);
+  rpc UpdateTaskStatus(UpdateTaskStatusGrpcRequest)     returns (projectv1.OperationResponse);
+  rpc CloseTask(TaskIdRequest)                          returns (projectv1.OperationResponse);
+  rpc AssignTask(AssignTaskGrpcRequest)                 returns (projectv1.OperationResponse);
+  rpc UnassignTask(TaskIdRequest)                       returns (projectv1.OperationResponse);
+  rpc DeleteTask(TaskIdRequest)                         returns (projectv1.OperationResponse);
+
+  // --- Comments ---
+  rpc GetTaskComments(TaskIdRequest)                    returns (projectv1.CommentsResponse);
+  rpc CreateComment(CreateCommentGrpcRequest)           returns (projectv1.Comment);
+  rpc UpdateComment(UpdateCommentGrpcRequest)           returns (projectv1.OperationResponse);
+  rpc DeleteComment(DeleteCommentGrpcRequest)           returns (projectv1.OperationResponse);
+
+  // --- Admin ---
+  rpc AdminGetProject(projectv1.GetProjectRequest)      returns (projectv1.Project);
+  rpc AdminUpdateProject(projectv1.UpdateProjectRequest) returns (projectv1.OperationResponse);
+  rpc AdminDeleteProject(projectv1.DeleteProjectRequest) returns (projectv1.OperationResponse);
+  rpc AdminGetTask(projectv1.GetTaskRequest)            returns (projectv1.Task);
+  rpc AdminUpdateTask(projectv1.UpdateTaskRequest)      returns (projectv1.OperationResponse);
+  rpc AdminDeleteTask(projectv1.DeleteTaskRequest)      returns (projectv1.OperationResponse);
+  rpc AdminGetComment(projectv1.GetCommentRequest)      returns (projectv1.Comment);
+  rpc AdminUpdateComment(projectv1.UpdateCommentRequest) returns (projectv1.OperationResponse);
+  rpc AdminDeleteComment(projectv1.DeleteCommentRequest) returns (projectv1.OperationResponse);
+}

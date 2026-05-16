@@ -80,3 +80,19 @@ services:
       PORT: "8081"
     ports:
       - "8081:8081"
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: backend/api-gateway/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      auth-service:
+        condition: service_started
+      project-service:
+        condition: service_started
+    environment:
+      AUTH_SERVICE_GRPC_ADDR: "auth-service:9090"
+      PROJECT_SERVICE_GRPC_ADDR: "project-service:9091"
+    ports:
+      - "8000:8000"

@@ -65,6 +65,9 @@ func overrideFromEnv(cfg *Config) error {
 	if v := strings.TrimSpace(os.Getenv("PROJECT_HTTP_ADDR")); v != "" {
 		cfg.HTTP.Addr = v
 	}
+	if v := strings.TrimSpace(os.Getenv("PROJECT_GRPC_ADDR")); v != "" {
+		cfg.GRPC.Addr = v
+	}
 	if v := strings.TrimSpace(os.Getenv("PROJECT_SHUTDOWN_TIMEOUT")); v != "" {
 		parsed, err := time.ParseDuration(v)
 		if err != nil {

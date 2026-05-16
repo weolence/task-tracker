@@ -1,0 +1,10 @@
+http:
+  addr: ":8000"
+
+auth_service:
+  grpc_addr: "auth-service:9090"
+
+project_service:
+  grpc_addr: "project-service:9091"
+
+shutdown_timeout: 10s

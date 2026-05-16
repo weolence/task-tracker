@@ -81,7 +81,17 @@ func (uc *ProjectUseCase) CreateProject(ctx context.Context, userID int32, proje
 
 	project.ManagerID = userID
 	project.Status = domain.ProjectStatusInWork
-	return uc.projectRepo.CreateProject(ctx, project)
+
+	projectID, err := uc.projectRepo.CreateProject(ctx, project)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := uc.projectRepo.AddProjectMember(ctx, projectID, userID); err != nil {
+		return 0, err
+	}
+
+	return projectID, nil
 }
 
 func (uc *ProjectUseCase) GetProjectTasks(ctx context.Context, projectID int, userID int32) (projectv1.TasksResponse, error) {
@@ -198,7 +208,7 @@ func (uc *ProjectUseCase) AddProjectMember(ctx context.Context, projectID int, m
 		return nil, err
 	}
 	if int32(user.ID) == project.ManagerID {
-		return nil, errors.New("manager is already part of the project")
+		return nil, errors.New("this user is the project manager and is already a member")
 	}
 
 	if err := uc.projectRepo.AddProjectMember(ctx, projectID, int32(user.ID)); err != nil {

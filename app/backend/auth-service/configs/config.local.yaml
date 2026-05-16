@@ -1,6 +1,9 @@
 http:
   addr: ":8080"
 
+grpc:
+  addr: ":9090"
+
 postgres:
   url: "postgres://postgres:postgres@localhost:5432/auth_db?sslmode=disable"
 

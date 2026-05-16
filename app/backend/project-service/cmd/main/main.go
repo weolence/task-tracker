@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,10 +15,14 @@ import (
 	"syscall"
 	"time"
 
+	projectsvcv1 "project-service/api/proto/projectsvcv1"
+	grpcadapter "project-service/internal/adapters/grpc"
 	httpadapter "project-service/internal/adapters/http"
 	postgresadapter "project-service/internal/adapters/postgres"
 	appconfig "project-service/internal/config"
 	"project-service/internal/core/usecase"
+
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -188,14 +194,29 @@ func run() error {
 	}
 
 	go func() {
-		log.Printf("starting project-service on %s", cfg.HTTP.Addr)
+		log.Printf("starting project-service HTTP on %s", cfg.HTTP.Addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("server error: %v", err)
+			log.Printf("HTTP server error: %v", err)
+		}
+	}()
+
+	grpcServer := grpc.NewServer()
+	projectsvcv1.RegisterProjectServiceServer(grpcServer, grpcadapter.NewProjectServer(projectUseCase, taskUseCase, commentUseCase))
+	grpcListener, err := net.Listen("tcp", cfg.GRPC.Addr)
+	if err != nil {
+		return fmt.Errorf("gRPC listen: %w", err)
+	}
+	go func() {
+		log.Printf("starting project-service gRPC on %s", cfg.GRPC.Addr)
+		if err := grpcServer.Serve(grpcListener); err != nil {
+			log.Printf("gRPC server error: %v", err)
 		}
 	}()
 
 	<-ctx.Done()
 	log.Println("shutdown signal received")
+
+	grpcServer.GracefulStop()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer shutdownCancel()
