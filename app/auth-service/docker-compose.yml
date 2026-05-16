@@ -16,6 +16,16 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/auth_db?sslmode=disable
+
   auth-service:
     build: .
     restart: unless-stopped
@@ -24,9 +34,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/auth_db?sslmode=disable
       JWT_SECRET: supersecret123
-      PORT: "8080"
     ports:
       - "8080:8080"

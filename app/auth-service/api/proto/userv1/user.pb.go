@@ -4,7 +4,7 @@
 // 	protoc        v7.34.1
 // source: user.proto
 
-package dto
+package userv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -554,7 +554,7 @@ var File_user_proto protoreflect.FileDescriptor
 const file_user_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"user.proto\x12\x03dto\"n\n" +
+	"user.proto\x12\x06userv1\"n\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x12\n" +
@@ -581,15 +581,15 @@ const file_user_proto_rawDesc = "" +
 	"\x05email\x18\x02 \x01(\tH\x01R\x05email\x88\x01\x01B\n" +
 	"\n" +
 	"\b_user_idB\b\n" +
-	"\x06_email\"`\n" +
-	"\x11UpdateUserRequest\x12\x1d\n" +
-	"\x04user\x18\x01 \x01(\v2\t.dto.UserR\x04user\x12\x1f\n" +
+	"\x06_email\"c\n" +
+	"\x11UpdateUserRequest\x12 \n" +
+	"\x04user\x18\x01 \x01(\v2\f.userv1.UserR\x04user\x12\x1f\n" +
 	"\bpassword\x18\x02 \x01(\tH\x00R\bpassword\x88\x01\x01B\v\n" +
 	"\t_password\",\n" +
 	"\x11DeleteUserRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x05R\x06userId\"-\n" +
 	"\x11OperationResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessageB!Z\x1fauth-service/internal/model/dtob\x06proto3"
+	"\amessage\x18\x01 \x01(\tR\amessageB\x1fZ\x1dauth-service/api/proto/userv1b\x06proto3"
 
 var (
 	file_user_proto_rawDescOnce sync.Once
@@ -605,19 +605,19 @@ func file_user_proto_rawDescGZIP() []byte {
 
 var file_user_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_user_proto_goTypes = []any{
-	(*User)(nil),                  // 0: dto.User
-	(*RegisterRequest)(nil),       // 1: dto.RegisterRequest
-	(*LoginRequest)(nil),          // 2: dto.LoginRequest
-	(*LoginResponse)(nil),         // 3: dto.LoginResponse
-	(*ValidateTokenRequest)(nil),  // 4: dto.ValidateTokenRequest
-	(*ValidateTokenResponse)(nil), // 5: dto.ValidateTokenResponse
-	(*GetUserRequest)(nil),        // 6: dto.GetUserRequest
-	(*UpdateUserRequest)(nil),     // 7: dto.UpdateUserRequest
-	(*DeleteUserRequest)(nil),     // 8: dto.DeleteUserRequest
-	(*OperationResponse)(nil),     // 9: dto.OperationResponse
+	(*User)(nil),                  // 0: userv1.User
+	(*RegisterRequest)(nil),       // 1: userv1.RegisterRequest
+	(*LoginRequest)(nil),          // 2: userv1.LoginRequest
+	(*LoginResponse)(nil),         // 3: userv1.LoginResponse
+	(*ValidateTokenRequest)(nil),  // 4: userv1.ValidateTokenRequest
+	(*ValidateTokenResponse)(nil), // 5: userv1.ValidateTokenResponse
+	(*GetUserRequest)(nil),        // 6: userv1.GetUserRequest
+	(*UpdateUserRequest)(nil),     // 7: userv1.UpdateUserRequest
+	(*DeleteUserRequest)(nil),     // 8: userv1.DeleteUserRequest
+	(*OperationResponse)(nil),     // 9: userv1.OperationResponse
 }
 var file_user_proto_depIdxs = []int32{
-	0, // 0: dto.UpdateUserRequest.user:type_name -> dto.User
+	0, // 0: userv1.UpdateUserRequest.user:type_name -> userv1.User
 	1, // [1:1] is the sub-list for method output_type
 	1, // [1:1] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name

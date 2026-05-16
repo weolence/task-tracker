@@ -1,0 +1,13 @@
+http:
+  addr: ":8080"
+
+postgres:
+  url: "postgres://postgres:postgres@localhost:5432/auth_db?sslmode=disable"
+
+jwt:
+  secret: "change-me-in-production"
+
+admin:
+  project_service_url: "http://localhost:8081"
+
+shutdown_timeout: 10s

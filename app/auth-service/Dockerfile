@@ -15,5 +15,7 @@ FROM alpine:latest
 RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /auth-service /auth-service
+COPY configs/ /configs/
+
 EXPOSE 8080
-ENTRYPOINT ["/auth-service"]
+ENTRYPOINT ["/auth-service", "-config", "/configs/config.docker.yaml"]
