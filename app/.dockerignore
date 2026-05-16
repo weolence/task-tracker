@@ -1,0 +1,9 @@
+.gocache
+**/.git
+**/.gitignore
+**/vendor
+**/node_modules
+**/*.md
+**/*.log
+**/tmp
+**/testdata
