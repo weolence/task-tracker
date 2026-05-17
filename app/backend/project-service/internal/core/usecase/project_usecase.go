@@ -446,6 +446,76 @@ func (uc *ProjectUseCase) DeleteProject(ctx context.Context, projectID int, mana
 	return uc.projectRepo.DeleteProject(ctx, int32(projectID))
 }
 
+func (uc *ProjectUseCase) RequireProjectActive(ctx context.Context, projectID int) error {
+	project, err := uc.projectRepo.GetProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if project == nil {
+		return errors.New("project not found")
+	}
+	if project.Status == domain.ProjectStatusEnded {
+		return errors.New("project is ended")
+	}
+	return nil
+}
+
+func (uc *ProjectUseCase) UpdateProjectMeta(ctx context.Context, projectID int, managerID int32, name, description string) error {
+	if name == "" || description == "" {
+		return errors.New("name and description are required")
+	}
+	isManager, err := uc.IsUserManager(ctx, managerID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isManager {
+		return errors.New("access denied")
+	}
+	return uc.projectRepo.UpdateProjectMeta(ctx, projectID, name, description)
+}
+
+func (uc *ProjectUseCase) EndProject(ctx context.Context, projectID int, managerID int32) error {
+	isManager, err := uc.IsUserManager(ctx, managerID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isManager {
+		return errors.New("access denied")
+	}
+	project, err := uc.projectRepo.GetProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if project == nil {
+		return errors.New("project not found")
+	}
+	if project.Status == domain.ProjectStatusEnded {
+		return errors.New("project is already ended")
+	}
+	return uc.projectRepo.UpdateProjectStatus(ctx, projectID, domain.ProjectStatusEnded)
+}
+
+func (uc *ProjectUseCase) ResumeProject(ctx context.Context, projectID int, managerID int32) error {
+	isManager, err := uc.IsUserManager(ctx, managerID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isManager {
+		return errors.New("access denied")
+	}
+	project, err := uc.projectRepo.GetProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if project == nil {
+		return errors.New("project not found")
+	}
+	if project.Status == domain.ProjectStatusInWork {
+		return errors.New("project is already active")
+	}
+	return uc.projectRepo.UpdateProjectStatus(ctx, projectID, domain.ProjectStatusInWork)
+}
+
 func (uc *ProjectUseCase) DeleteProjectForAdmin(ctx context.Context, projectID int32) error {
 	if projectID == 0 {
 		return errors.New("project id is required")

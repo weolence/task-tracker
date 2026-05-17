@@ -27,6 +27,8 @@
     .logout { margin-left: 12px; background: #ef4444; }
     .admin-btn { margin-left: 12px; background: #7c3aed; }
     .admin-btn:hover { background: #6d28d9; }
+    .card.ended { opacity: 0.75; border-color: #94a3b8; background: #f1f5f9; }
+    .ended-badge { display: inline-block; padding: 2px 8px; background: #64748b; color: #fff; border-radius: 4px; font-size: 11px; font-weight: bold; letter-spacing: 0.04em; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -57,6 +59,11 @@
     <section class="section">
       <h2>Проекты, которые я веду</h2>
       <div id="owned-projects" class="grid"></div>
+    </section>
+
+    <section class="section" id="ended-projects-section" style="display:none;">
+      <h2>Завершённые проекты</h2>
+      <div id="ended-projects" class="grid"></div>
     </section>
 
     <section class="section">
@@ -143,7 +150,14 @@
       return text ? JSON.parse(text) : null;
     };
 
-    const renderProjects = (containerId, projects = []) => {
+    const escapeHtml = (value) => String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+
+    const renderProjects = (containerId, projects = [], showEndedBadge = false) => {
       const container = document.getElementById(containerId);
       container.innerHTML = '';
       projects = projects || [];
@@ -154,12 +168,14 @@
       }
 
       projects.forEach(project => {
+        const isEnded = project.status === 'PROJECT_STATUS_ENDED';
         const card = document.createElement('div');
-        card.className = 'card';
+        card.className = 'card' + (isEnded ? ' ended' : '');
         card.innerHTML = `
-          <h3>${project.name}</h3>
-          <p>${project.description}</p>
+          <h3>${escapeHtml(project.name)}</h3>
+          <p>${escapeHtml(project.description)}</p>
           <div class="entity-meta">ID проекта: ${project.id}</div>
+          ${showEndedBadge && isEnded ? '<div class="ended-badge">ЗАВЕРШЁН</div>' : ''}
         `;
         card.addEventListener('click', () => {
           window.location.href = `/project/${project.id}`;
@@ -174,8 +190,21 @@
 
       try {
         const data = await apiRequest('/api/dashboard');
-        renderProjects('owned-projects', data.owned_projects || []);
+        const allOwned = data.owned_projects || [];
+        const activeOwned = allOwned.filter(p => p.status !== 'PROJECT_STATUS_ENDED');
+        const endedOwned = allOwned.filter(p => p.status === 'PROJECT_STATUS_ENDED');
+
+        renderProjects('owned-projects', activeOwned);
         renderProjects('member-projects', data.member_projects || []);
+
+        const endedSection = document.getElementById('ended-projects-section');
+        if (endedOwned.length > 0) {
+          endedSection.style.display = 'block';
+          renderProjects('ended-projects', endedOwned, true);
+        } else {
+          endedSection.style.display = 'none';
+        }
+
         document.getElementById('subtitle').textContent = 'Список проектов успешно загружен.';
       } catch (error) {
         showMessage(error.message, true);

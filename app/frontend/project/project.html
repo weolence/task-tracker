@@ -106,6 +106,12 @@
     .btn-small { padding: 6px 12px; font-size: 12px; }
     .comment-form textarea { min-height: 100px; }
     .comment-form-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-success:hover { background: #15803d; }
+    .project-ended-badge { display: inline-block; padding: 3px 10px; background: #dc2626; color: white; border-radius: 4px; font-size: 12px; font-weight: bold; letter-spacing: 0.05em; vertical-align: middle; margin-left: 8px; }
+    .project-frozen-banner { margin: 12px 0; padding: 12px 16px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; color: #92400e; font-weight: 500; }
+    .edit-meta-btn { width: 28px; height: 28px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #475569; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; vertical-align: middle; margin-left: 6px; }
+    .edit-meta-btn:hover { background: #f1f5f9; color: #1e293b; }
     @media (max-width: 900px) {
       body { padding: 16px; }
       .container { padding: 18px; }
@@ -119,9 +125,14 @@
   <div class="container">
     <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:4px;">
       <a href="/" class="back-link" style="margin-bottom:0;">&larr; Назад к проектам</a>
-      <button id="delete-project-btn" class="btn btn-danger" type="button" style="display:none;" onclick="deleteProject()">Удалить проект</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+        <button id="end-project-btn" class="btn btn-danger" type="button" style="display:none;" onclick="endProject()">Завершить проект</button>
+        <button id="resume-project-btn" class="btn btn-success" type="button" style="display:none;" onclick="resumeProject()">Возобновить проект</button>
+        <button id="delete-project-btn" class="btn btn-danger" type="button" style="display:none;" onclick="deleteProject()">Удалить проект</button>
+      </div>
     </div>
     <h1 id="project-title">Задачи проекта</h1>
+    <div id="project-frozen-banner" class="project-frozen-banner" style="display:none;">Проект завершён. Добавление и изменение задач недоступно.</div>
     <div id="message" class="message" style="display:none"></div>
 
     <section style="margin-bottom: 24px;">
@@ -276,6 +287,26 @@
     </div>
   </div>
 
+  <!-- Modal for editing project name/description -->
+  <div id="edit-project-modal" class="modal">
+    <div class="modal-content">
+      <span class="close" id="edit-project-modal-close">&times;</span>
+      <h2>Редактировать проект</h2>
+      <form id="edit-project-form">
+        <div class="form-group">
+          <label for="edit-project-name">Название:</label>
+          <input id="edit-project-name" type="text" required />
+        </div>
+        <div class="form-group">
+          <label for="edit-project-description">Описание:</label>
+          <textarea id="edit-project-description" rows="4"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+        <button type="button" class="btn btn-secondary" id="edit-project-cancel">Отмена</button>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal for user profile -->
   <div id="profile-modal" class="modal">
     <div class="modal-content profile-modal-content">
@@ -364,7 +395,10 @@
     let selectedTaskComments = [];
     let editingCommentId = null;
     let projectInfo = null;
+    let projectStatus = null;
     let closedTasksVisible = false;
+
+    const isProjectEnded = () => projectStatus === 'PROJECT_STATUS_ENDED';
 
     const getUserId = async () => {
       try {
@@ -384,6 +418,17 @@
         document.getElementById('delete-project-btn').style.display = isManager ? 'inline-block' : 'none';
       } catch (error) {
         showMessage(error.message, true);
+      }
+    };
+
+    const updateProjectStatusUI = () => {
+      const ended = isProjectEnded();
+      document.getElementById('project-frozen-banner').style.display = ended ? 'block' : 'none';
+      if (isManager) {
+        document.getElementById('end-project-btn').style.display = ended ? 'none' : 'inline-block';
+        document.getElementById('resume-project-btn').style.display = ended ? 'inline-block' : 'none';
+        const createTaskBtn = document.getElementById('open-create-task-btn');
+        if (createTaskBtn) createTaskBtn.style.display = ended ? 'none' : 'inline-flex';
       }
     };
 
@@ -656,13 +701,22 @@
         const project = await apiRequest(`/api/project-info?project_id=${projectId}`);
         projectInfo = project;
         projectManagerId = project.manager_id;
+        projectStatus = project.status;
         document.getElementById('project-title').innerHTML = `
           <div class="project-heading">
-            <span>${project.name}</span>
-            <span class="project-description">${project.description}</span>
+            <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+              <span id="pname-display">${escapeHtml(project.name)}</span>
+              ${isManager ? `<button class="edit-meta-btn" type="button" onclick="showEditProjectModal()" title="Редактировать название и описание">✏</button>` : ''}
+              <span id="project-status-badge" class="project-ended-badge" style="display:${project.status === 'PROJECT_STATUS_ENDED' ? 'inline-block' : 'none'};">ЗАВЕРШЁН</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span id="pdesc-display" class="project-description">${escapeHtml(project.description)}</span>
+              ${isManager ? `<button class="edit-meta-btn" type="button" onclick="showEditProjectModal()" title="Редактировать описание">✏</button>` : ''}
+            </div>
             <span class="entity-meta inline">ID проекта: ${project.id}</span>
           </div>
         `;
+        updateProjectStatusUI();
       } catch (error) {
         console.error('Failed to load project info:', error);
       }
@@ -952,7 +1006,7 @@
       document.getElementById('task-detail-title').textContent = task.name;
       const content = document.getElementById('task-detail-content');
       const startDate = task.start_date ? new Date(task.start_date).toLocaleDateString() : 'Не начата';
-      const canManageTask = isManager;
+      const canManageTask = isManager && !isProjectEnded();
       const canWriteComment = canWriteCommentForTask(task);
       const isClosedTask = isTaskClosed(task);
       const canCloseTask = canManageTask && !isTaskClosed(task) && task.status === 2;
@@ -1248,6 +1302,50 @@
       }
     };
 
+    const showEditProjectModal = () => {
+      if (!isManager || !projectInfo) return;
+      document.getElementById('edit-project-name').value = projectInfo.name || '';
+      document.getElementById('edit-project-description').value = projectInfo.description || '';
+      document.getElementById('edit-project-modal').style.display = 'block';
+    };
+
+    const hideEditProjectModal = () => {
+      document.getElementById('edit-project-modal').style.display = 'none';
+      document.getElementById('edit-project-form').reset();
+    };
+
+    const endProject = async () => {
+      if (!isManager) return;
+      const confirmed = window.confirm('Завершить проект? Добавление и изменение задач будет заблокировано. Участники не будут видеть проект в своём списке.');
+      if (!confirmed) return;
+      try {
+        await apiRequest(`/api/project/end?project_id=${projectId}`, { method: 'PUT' });
+        projectStatus = 'PROJECT_STATUS_ENDED';
+        const badge = document.getElementById('project-status-badge');
+        if (badge) badge.style.display = 'inline-block';
+        updateProjectStatusUI();
+        showMessage('Проект завершён.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
+    const resumeProject = async () => {
+      if (!isManager) return;
+      const confirmed = window.confirm('Возобновить проект? Участники снова увидят его в своём списке.');
+      if (!confirmed) return;
+      try {
+        await apiRequest(`/api/project/resume?project_id=${projectId}`, { method: 'PUT' });
+        projectStatus = 'PROJECT_STATUS_IN_WORK';
+        const badge = document.getElementById('project-status-badge');
+        if (badge) badge.style.display = 'none';
+        updateProjectStatusUI();
+        showMessage('Проект возобновлён.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
     window.deleteProject = deleteProject;
     window.removeProjectMember = removeProjectMember;
     window.leaveProject = leaveProject;
@@ -1359,6 +1457,9 @@
     };
 
     window.showUserProfile = showUserProfile;
+    window.showEditProjectModal = showEditProjectModal;
+    window.endProject = endProject;
+    window.resumeProject = resumeProject;
 
     window.assignTask = assignTask;
 
@@ -1497,6 +1598,35 @@
     document.getElementById('open-create-task-btn').addEventListener('click', showCreateTaskModal);
     document.getElementById('invite-member-btn').addEventListener('click', showInviteMemberModal);
 
+    document.getElementById('edit-project-modal-close').addEventListener('click', hideEditProjectModal);
+    document.getElementById('edit-project-cancel').addEventListener('click', hideEditProjectModal);
+    document.getElementById('edit-project-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!isManager || !projectInfo) return;
+      const name = document.getElementById('edit-project-name').value.trim();
+      const description = document.getElementById('edit-project-description').value.trim();
+      if (!name || !description) {
+        showMessage('Название и описание обязательны.', true);
+        return;
+      }
+      try {
+        await apiRequest(`/api/project/update-meta?project_id=${projectId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name, description }),
+        });
+        projectInfo.name = name;
+        projectInfo.description = description;
+        const nameEl = document.getElementById('pname-display');
+        const descEl = document.getElementById('pdesc-display');
+        if (nameEl) nameEl.textContent = name;
+        if (descEl) descEl.textContent = description;
+        hideEditProjectModal();
+        showMessage('Проект обновлён.', false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    });
+
     document.getElementById('create-modal-close').addEventListener('click', hideCreateTaskModal);
     document.getElementById('create-modal-cancel').addEventListener('click', hideCreateTaskModal);
     document.getElementById('detail-modal-close').addEventListener('click', hideTaskDetailModal);
@@ -1521,6 +1651,7 @@
       const assignModal = document.getElementById('assign-modal');
       const inviteModal = document.getElementById('invite-member-modal');
       const profileModal = document.getElementById('profile-modal');
+      const editProjectModal = document.getElementById('edit-project-modal');
       if (event.target === createModal) {
         hideCreateTaskModal();
       }
@@ -1535,6 +1666,9 @@
       }
       if (event.target === profileModal) {
         profileModal.style.display = 'none';
+      }
+      if (event.target === editProjectModal) {
+        hideEditProjectModal();
       }
     });
 

@@ -104,7 +104,7 @@ func (r *ProjectRepository) GetMemberProjects(ctx context.Context, userID int32)
 		FROM projects p
 		JOIN project_user_roles pur ON p.id = pur.project_id
 		JOIN project_user_roles manager_role ON p.id = manager_role.project_id AND manager_role.role = 'manager'
-		WHERE pur.user_id = $1 AND pur.role = 'member'
+		WHERE pur.user_id = $1 AND pur.role = 'member' AND p.status = 0
 		ORDER BY p.start_date
 	`
 
@@ -378,6 +378,32 @@ func (r *ProjectRepository) UpdateProject(ctx context.Context, project domain.Pr
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (r *ProjectRepository) UpdateProjectMeta(ctx context.Context, projectID int, name, description string) error {
+	cmdTag, err := r.pool.Exec(ctx, `
+		UPDATE projects SET name = $1, description = $2 WHERE id = $3
+	`, name, description, projectID)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("project not found")
+	}
+	return nil
+}
+
+func (r *ProjectRepository) UpdateProjectStatus(ctx context.Context, projectID int, status domain.ProjectStatus) error {
+	cmdTag, err := r.pool.Exec(ctx, `
+		UPDATE projects SET status = $1 WHERE id = $2
+	`, status, projectID)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("project not found")
+	}
+	return nil
 }
 
 func (r *ProjectRepository) DeleteProject(ctx context.Context, projectID int32) error {

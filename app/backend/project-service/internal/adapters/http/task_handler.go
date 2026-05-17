@@ -175,6 +175,11 @@ func (h *TaskHandler) UpdateTaskStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.projectUseCase.RequireProjectActive(r.Context(), int(task.ProjectID)); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
 	if err := h.taskUseCase.UpdateTaskStatus(r.Context(), taskID, domain.TaskStatus(updateReq.Status)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -214,6 +219,11 @@ func (h *TaskHandler) CloseTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.projectUseCase.RequireProjectActive(r.Context(), int(task.ProjectID)); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
 	if task.Status != domain.TaskStatusOnReview {
 		http.Error(w, "task is not ready for closing", http.StatusBadRequest)
 		return
@@ -243,6 +253,11 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	isManager, err := h.projectUseCase.IsUserManager(r.Context(), userID, int(createReq.ProjectId))
 	if err != nil || !isManager {
 		http.Error(w, "access denied", http.StatusForbidden)
+		return
+	}
+
+	if err := h.projectUseCase.RequireProjectActive(r.Context(), int(createReq.ProjectId)); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
 
@@ -315,6 +330,11 @@ func (h *TaskHandler) AssignTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.projectUseCase.RequireProjectActive(r.Context(), int(task.ProjectID)); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
 	if !isManager && (int32(assignReq.AssigneeId) != userID || task.AssigneeID != nil) {
 		http.Error(w, "access denied", http.StatusForbidden)
 		return
@@ -371,6 +391,11 @@ func (h *TaskHandler) UnassignTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.projectUseCase.RequireProjectActive(r.Context(), int(task.ProjectID)); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
 	if err := h.taskUseCase.UnassignTask(r.Context(), taskID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -407,6 +432,11 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	isManager, err := h.projectUseCase.IsUserManager(r.Context(), userID, int(task.ProjectID))
 	if err != nil || !isManager {
 		http.Error(w, "access denied", http.StatusForbidden)
+		return
+	}
+
+	if err := h.projectUseCase.RequireProjectActive(r.Context(), int(task.ProjectID)); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
 

@@ -210,6 +210,9 @@ func (s *ProjectServer) CreateTask(ctx context.Context, req *projectv1.CreateTas
 	if err := requireManager(ctx, s.projects, userID, int(req.ProjectId)); err != nil {
 		return nil, err
 	}
+	if err := s.projects.RequireProjectActive(ctx, int(req.ProjectId)); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
 	desc := ""
 	if req.Description != nil {
 		desc = *req.Description
@@ -298,6 +301,9 @@ func (s *ProjectServer) UpdateTaskStatus(ctx context.Context, req *projectsvcv1.
 	if newStatus == domain.TaskStatusClosed {
 		return nil, status.Error(codes.InvalidArgument, "use CloseTask to close a task")
 	}
+	if err := s.projects.RequireProjectActive(ctx, int(task.ProjectID)); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
 	if err := s.tasks.UpdateTaskStatus(ctx, int(req.TaskId), newStatus); err != nil {
 		return nil, status.Errorf(codes.Internal, "update status: %v", err)
 	}
@@ -315,6 +321,9 @@ func (s *ProjectServer) CloseTask(ctx context.Context, req *projectsvcv1.TaskIdR
 	}
 	if err := requireManager(ctx, s.projects, userID, int(task.ProjectID)); err != nil {
 		return nil, err
+	}
+	if err := s.projects.RequireProjectActive(ctx, int(task.ProjectID)); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	if task.Status != domain.TaskStatusOnReview {
 		return nil, status.Error(codes.FailedPrecondition, "task is not ready for closing")
@@ -341,6 +350,9 @@ func (s *ProjectServer) AssignTask(ctx context.Context, req *projectsvcv1.Assign
 	isMember, err := s.projects.IsUserMember(ctx, userID, int(task.ProjectID))
 	if err != nil || !isMember {
 		return nil, status.Error(codes.PermissionDenied, "access denied")
+	}
+	if err := s.projects.RequireProjectActive(ctx, int(task.ProjectID)); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	if !isManager && (req.AssigneeId != userID || task.AssigneeID != nil) {
 		return nil, status.Error(codes.PermissionDenied, "access denied")
@@ -372,6 +384,9 @@ func (s *ProjectServer) UnassignTask(ctx context.Context, req *projectsvcv1.Task
 	if err := requireManager(ctx, s.projects, userID, int(task.ProjectID)); err != nil {
 		return nil, err
 	}
+	if err := s.projects.RequireProjectActive(ctx, int(task.ProjectID)); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
 	if err := s.tasks.UnassignTask(ctx, int(req.TaskId)); err != nil {
 		return nil, status.Errorf(codes.Internal, "unassign task: %v", err)
 	}
@@ -389,6 +404,9 @@ func (s *ProjectServer) DeleteTask(ctx context.Context, req *projectsvcv1.TaskId
 	}
 	if err := requireManager(ctx, s.projects, userID, int(task.ProjectID)); err != nil {
 		return nil, err
+	}
+	if err := s.projects.RequireProjectActive(ctx, int(task.ProjectID)); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	if err := s.tasks.DeleteTask(ctx, int(req.TaskId)); err != nil {
 		return nil, status.Errorf(codes.Internal, "delete task: %v", err)

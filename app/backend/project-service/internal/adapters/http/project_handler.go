@@ -405,6 +405,108 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (h *ProjectHandler) UpdateProjectMeta(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := r.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(w, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.projectUseCase.UpdateProjectMeta(r.Context(), projectID, userID, req.Name, req.Description); err != nil {
+		statusCode := http.StatusBadRequest
+		if err.Error() == "access denied" {
+			statusCode = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), statusCode)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *ProjectHandler) EndProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := r.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(w, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.projectUseCase.EndProject(r.Context(), projectID, userID); err != nil {
+		statusCode := http.StatusBadRequest
+		if err.Error() == "access denied" {
+			statusCode = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), statusCode)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *ProjectHandler) ResumeProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := r.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(w, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.projectUseCase.ResumeProject(r.Context(), projectID, userID); err != nil {
+		statusCode := http.StatusBadRequest
+		if err.Error() == "access denied" {
+			statusCode = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), statusCode)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (h *ProjectHandler) GetUserProjects(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.URL.Query().Get("user_id")
 	userID, err := strconv.Atoi(userIDStr)

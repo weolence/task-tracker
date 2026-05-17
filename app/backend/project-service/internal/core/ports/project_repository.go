@@ -18,5 +18,7 @@ type ProjectRepository interface {
 	TransferProjectManager(ctx context.Context, projectID int, currentManagerID int32, newManagerID int32) error
 	RemoveProjectMember(ctx context.Context, projectID int, userID int32) error
 	UpdateProject(ctx context.Context, project domain.Project) error
+	UpdateProjectMeta(ctx context.Context, projectID int, name, description string) error
+	UpdateProjectStatus(ctx context.Context, projectID int, status domain.ProjectStatus) error
 	DeleteProject(ctx context.Context, projectID int32) error
 }
