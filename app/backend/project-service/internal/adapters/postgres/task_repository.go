@@ -443,38 +443,12 @@ func (r *TaskRepository) UpdateTaskStatus(ctx context.Context, taskID int, statu
 		return err
 	}
 
-	var query string
-	switch status {
-	case domain.TaskStatusInWork:
-		query = `
-			UPDATE tasks
-			SET status_id = $1,
-				start_date = CASE WHEN start_date IS NULL THEN now() ELSE start_date END
-			WHERE id = $2 AND status_id != $3
-		`
-	case domain.TaskStatusNotStarted:
-		query = `
-			UPDATE tasks
-			SET status_id = $1,
-				end_date = NULL
-			WHERE id = $2 AND status_id != $3
-		`
-	case domain.TaskStatusClosed:
-		query = `
-			UPDATE tasks
-			SET status_id = $1,
-				end_date = now()
-			WHERE id = $2 AND status_id != $3
-		`
-	default:
-		query = `
-			UPDATE tasks
-			SET status_id = $1
-			WHERE id = $2 AND status_id != $3
-		`
-	}
-
-	cmdTag, err := r.pool.Exec(ctx, query, newStatusID, taskID, closedID)
+	// Only update status_id; the trg_task_status_dates trigger handles
+	// start_date and end_date automatically on every status transition.
+	cmdTag, err := r.pool.Exec(ctx, `
+		UPDATE tasks SET status_id = $1
+		WHERE id = $2 AND status_id != $3
+	`, newStatusID, taskID, closedID)
 	if err != nil {
 		return err
 	}
@@ -538,28 +512,8 @@ func (r *TaskRepository) UpdateTask(ctx context.Context, task domain.Task) error
 }
 
 func (r *TaskRepository) CloseTask(ctx context.Context, taskID int) error {
-	closedID, err := r.statusID(ctx, domain.TaskStatusClosed)
-	if err != nil {
-		return err
-	}
-
-	query := `
-		UPDATE tasks
-		SET status_id = $2,
-			end_date = now()
-		WHERE id = $1 AND status_id != $3
-	`
-
-	cmdTag, err := r.pool.Exec(ctx, query, taskID, closedID, closedID)
-	if err != nil {
-		return err
-	}
-
-	if cmdTag.RowsAffected() == 0 {
-		return errors.New("task not found")
-	}
-
-	return nil
+	_, err := r.pool.Exec(ctx, "SELECT close_task($1)", taskID)
+	return err
 }
 
 func (r *TaskRepository) UnassignTasksByMemberAndProject(ctx context.Context, projectID int, userID int32) error {

@@ -69,6 +69,8 @@ func run() error {
 	adminHandler := httpadapter.NewAdminHandler(projectUseCase, taskUseCase)
 
 	authMW := httpadapter.AuthMiddleware(cfg.AuthService.URL)
+	projRoleMW := httpadapter.ProjectRoleMiddleware(pool)
+	taskRoleMW := httpadapter.TaskRoleMiddleware(pool)
 
 	serveHTML := func(filename string) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
@@ -90,21 +92,34 @@ func run() error {
 		}
 		serveHTML("index.html")(w, r)
 	})
+
+	// Read-only: app_member is sufficient
 	mux.Handle("/api/dashboard", authMW(http.HandlerFunc(projectHandler.Dashboard)))
-	mux.Handle("/api/projects", authMW(http.HandlerFunc(projectHandler.CreateProject)))
+	mux.Handle("/api/user-id", authMW(http.HandlerFunc(projectHandler.GetUserID)))
+	mux.Handle("/api/user-projects", authMW(http.HandlerFunc(projectHandler.GetUserProjects)))
+	mux.Handle("/api/is-manager", authMW(http.HandlerFunc(projectHandler.IsUserManager)))
+	mux.Handle("/api/project-info", authMW(http.HandlerFunc(projectHandler.GetProjectInfo)))
+	mux.Handle("/api/project-members", authMW(http.HandlerFunc(projectHandler.GetProjectMembers)))
+	mux.Handle("/api/project-members-details", authMW(http.HandlerFunc(projectHandler.GetProjectMembersWithDetails)))
+	mux.Handle("/api/my-tasks", authMW(http.HandlerFunc(taskHandler.GetMyTasks)))
 	mux.Handle("/api/projects/", authMW(http.HandlerFunc(projectHandler.ProjectTasks)))
 
-	mux.Handle("/api/my-tasks", authMW(http.HandlerFunc(taskHandler.GetMyTasks)))
-	mux.Handle("/api/project-tasks", authMW(http.HandlerFunc(taskHandler.GetAllProjectTasks)))
-	mux.Handle("/api/closed-project-tasks", authMW(http.HandlerFunc(taskHandler.GetClosedProjectTasks)))
-	mux.Handle("/api/tasks", authMW(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Project creation: user becomes manager, so app_manager is always required
+	mux.Handle("/api/projects", authMW(httpadapter.AsManagerMiddleware(http.HandlerFunc(projectHandler.CreateProject))))
+
+	// Task creation: only managers create tasks, so app_manager is always required
+	mux.Handle("/api/tasks", authMW(httpadapter.AsManagerMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			taskHandler.CreateTask(w, r)
 		} else {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
-	})))
-	mux.Handle("/api/tasks/", authMW(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	}))))
+
+	// Task operations: TaskRoleMiddleware elevates to app_manager when the user
+	// is the manager of the task's project; members keep app_member for comments
+	// and status updates.
+	mux.Handle("/api/tasks/", authMW(taskRoleMW(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if strings.Contains(path, "/comments") {
 			switch r.Method {
@@ -132,22 +147,22 @@ func run() error {
 		} else {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
-	})))
+	}))))
 
-	mux.Handle("/api/user-id", authMW(http.HandlerFunc(projectHandler.GetUserID)))
-	mux.Handle("/api/project-members", authMW(http.HandlerFunc(projectHandler.GetProjectMembers)))
-	mux.Handle("/api/project-members-details", authMW(http.HandlerFunc(projectHandler.GetProjectMembersWithDetails)))
-	mux.Handle("/api/project-members/add", authMW(http.HandlerFunc(projectHandler.AddProjectMember)))
-	mux.Handle("/api/project-members/remove", authMW(http.HandlerFunc(projectHandler.RemoveProjectMember)))
-	mux.Handle("/api/project/leave", authMW(http.HandlerFunc(projectHandler.LeaveProject)))
-	mux.Handle("/api/project/delete", authMW(http.HandlerFunc(projectHandler.DeleteProject)))
-	mux.Handle("/api/project/update-meta", authMW(http.HandlerFunc(projectHandler.UpdateProjectMeta)))
-	mux.Handle("/api/project/end", authMW(http.HandlerFunc(projectHandler.EndProject)))
-	mux.Handle("/api/project/resume", authMW(http.HandlerFunc(projectHandler.ResumeProject)))
-	mux.Handle("/api/project-manager/transfer", authMW(http.HandlerFunc(projectHandler.TransferProjectManager)))
-	mux.Handle("/api/user-projects", authMW(http.HandlerFunc(projectHandler.GetUserProjects)))
-	mux.Handle("/api/is-manager", authMW(http.HandlerFunc(projectHandler.IsUserManager)))
-	mux.Handle("/api/project-info", authMW(http.HandlerFunc(projectHandler.GetProjectInfo)))
+	// Project-scoped manager operations: ProjectRoleMiddleware elevates to
+	// app_manager when the caller is the project's manager.
+	mux.Handle("/api/project-tasks", authMW(projRoleMW(http.HandlerFunc(taskHandler.GetAllProjectTasks))))
+	mux.Handle("/api/closed-project-tasks", authMW(projRoleMW(http.HandlerFunc(taskHandler.GetClosedProjectTasks))))
+	mux.Handle("/api/project-members/add", authMW(projRoleMW(http.HandlerFunc(projectHandler.AddProjectMember))))
+	mux.Handle("/api/project-members/remove", authMW(projRoleMW(http.HandlerFunc(projectHandler.RemoveProjectMember))))
+	mux.Handle("/api/project/delete", authMW(projRoleMW(http.HandlerFunc(projectHandler.DeleteProject))))
+	mux.Handle("/api/project/update-meta", authMW(projRoleMW(http.HandlerFunc(projectHandler.UpdateProjectMeta))))
+	mux.Handle("/api/project/end", authMW(projRoleMW(http.HandlerFunc(projectHandler.EndProject))))
+	mux.Handle("/api/project/resume", authMW(projRoleMW(http.HandlerFunc(projectHandler.ResumeProject))))
+	mux.Handle("/api/project-manager/transfer", authMW(projRoleMW(http.HandlerFunc(projectHandler.TransferProjectManager))))
+	// Leave requires DELETE on project_user_roles; use AsManagerMiddleware since
+	// app_member does not hold that privilege and RLS is not configured.
+	mux.Handle("/api/project/leave", authMW(httpadapter.AsManagerMiddleware(http.HandlerFunc(projectHandler.LeaveProject))))
 
 	mux.Handle("/api/admin/projects/get", authMW(httpadapter.AdminOnly(http.HandlerFunc(adminHandler.GetProject))))
 	mux.Handle("/api/admin/projects", authMW(httpadapter.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -16,12 +16,24 @@ CREATE TABLE IF NOT EXISTS project_user_roles (
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
+-- Supertype: common category attributes shared by all category subtypes
 CREATE TABLE IF NOT EXISTS task_categories (
     id            SERIAL PRIMARY KEY,
     name          TEXT NOT NULL,
-    category_type TEXT NOT NULL CHECK (category_type IN ('group', 'difficulty', 'priority')),
-    parent_id     INT REFERENCES task_categories(id) ON DELETE SET NULL,
+    category_type TEXT NOT NULL CHECK (category_type IN ('difficulty', 'priority')),
     UNIQUE (category_type, name)
+);
+
+-- Subtype: difficulty ratings (Easy=1, Medium=2, Hard=3)
+CREATE TABLE IF NOT EXISTS difficulty_categories (
+    id    INT PRIMARY KEY REFERENCES task_categories(id) ON DELETE CASCADE,
+    level INT NOT NULL CHECK (level BETWEEN 1 AND 3)
+);
+
+-- Subtype: priority ratings (Low=1, Medium=2, High=3)
+CREATE TABLE IF NOT EXISTS priority_categories (
+    id    INT PRIMARY KEY REFERENCES task_categories(id) ON DELETE CASCADE,
+    level INT NOT NULL CHECK (level BETWEEN 1 AND 3)
 );
 
 CREATE TABLE IF NOT EXISTS task_statuses (
@@ -59,37 +71,33 @@ INSERT INTO task_statuses (name) VALUES
     ('Closed')
 ON CONFLICT (name) DO NOTHING;
 
-INSERT INTO task_categories (name, category_type, parent_id)
-VALUES ('Difficulty', 'group', NULL)
+INSERT INTO task_categories (name, category_type)
+VALUES ('Easy', 'difficulty'), ('Medium', 'difficulty'), ('Hard', 'difficulty')
 ON CONFLICT (category_type, name) DO NOTHING;
 
-INSERT INTO task_categories (name, category_type, parent_id)
-SELECT 'Easy', 'difficulty', id FROM task_categories WHERE category_type = 'group' AND name = 'Difficulty'
+INSERT INTO difficulty_categories (id, level)
+SELECT id, 1 FROM task_categories WHERE category_type = 'difficulty' AND name = 'Easy'
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO difficulty_categories (id, level)
+SELECT id, 2 FROM task_categories WHERE category_type = 'difficulty' AND name = 'Medium'
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO difficulty_categories (id, level)
+SELECT id, 3 FROM task_categories WHERE category_type = 'difficulty' AND name = 'Hard'
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO task_categories (name, category_type)
+VALUES ('Low', 'priority'), ('Medium', 'priority'), ('High', 'priority')
 ON CONFLICT (category_type, name) DO NOTHING;
 
-INSERT INTO task_categories (name, category_type, parent_id)
-SELECT 'Medium', 'difficulty', id FROM task_categories WHERE category_type = 'group' AND name = 'Difficulty'
-ON CONFLICT (category_type, name) DO NOTHING;
-
-INSERT INTO task_categories (name, category_type, parent_id)
-SELECT 'Hard', 'difficulty', id FROM task_categories WHERE category_type = 'group' AND name = 'Difficulty'
-ON CONFLICT (category_type, name) DO NOTHING;
-
-INSERT INTO task_categories (name, category_type, parent_id)
-VALUES ('Priority', 'group', NULL)
-ON CONFLICT (category_type, name) DO NOTHING;
-
-INSERT INTO task_categories (name, category_type, parent_id)
-SELECT 'Low', 'priority', id FROM task_categories WHERE category_type = 'group' AND name = 'Priority'
-ON CONFLICT (category_type, name) DO NOTHING;
-
-INSERT INTO task_categories (name, category_type, parent_id)
-SELECT 'Medium', 'priority', id FROM task_categories WHERE category_type = 'group' AND name = 'Priority'
-ON CONFLICT (category_type, name) DO NOTHING;
-
-INSERT INTO task_categories (name, category_type, parent_id)
-SELECT 'High', 'priority', id FROM task_categories WHERE category_type = 'group' AND name = 'Priority'
-ON CONFLICT (category_type, name) DO NOTHING;
+INSERT INTO priority_categories (id, level)
+SELECT id, 1 FROM task_categories WHERE category_type = 'priority' AND name = 'Low'
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO priority_categories (id, level)
+SELECT id, 2 FROM task_categories WHERE category_type = 'priority' AND name = 'Medium'
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO priority_categories (id, level)
+SELECT id, 3 FROM task_categories WHERE category_type = 'priority' AND name = 'High'
+ON CONFLICT (id) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS comments_task_id_idx              ON comments(task_id);
 CREATE INDEX IF NOT EXISTS comments_author_id_idx            ON comments(author_id);
@@ -154,23 +162,37 @@ JOIN task_statuses ts     ON ts.id = t.status_id
 LEFT JOIN task_categories tc_diff ON tc_diff.id = t.difficulty_category_id
 LEFT JOIN task_categories tc_prio ON tc_prio.id = t.priority_category_id;
 
--- Privilege grants: members can read project/task data, manage comments, advance task status
+-- Privilege grants: members can read project/task data, manage comments,
+-- advance task status, and self-assign unassigned tasks.
 GRANT SELECT ON view_member_tasks, view_project_summary,
-    projects, project_user_roles, task_statuses, task_categories TO app_member;
+    projects, project_user_roles, task_statuses,
+    task_categories, difficulty_categories, priority_categories TO app_member;
 GRANT SELECT, INSERT, UPDATE, DELETE ON comments TO app_member;
-GRANT UPDATE (status_id) ON tasks TO app_member;
+-- Direct SELECT on tasks is required for application queries (e.g. GetTaskByID).
+-- The view view_member_tasks provides the logical external schema; this grant
+-- supports the internal query patterns without broadening write privileges.
+GRANT SELECT ON tasks TO app_member;
+-- Column-level UPDATE: members may advance task status and self-assign tasks.
+-- They cannot modify task name, description, priority, difficulty, or project.
+GRANT UPDATE (status_id, assignee_id, start_date, end_date) ON tasks TO app_member;
+GRANT USAGE, SELECT ON SEQUENCE comments_id_seq TO app_member;
 
--- Managers: full task and team management within their projects
+-- Managers: full project and task management
 GRANT SELECT ON view_member_tasks, view_project_summary,
-    projects, project_user_roles, task_statuses, task_categories TO app_manager;
+    project_user_roles, task_statuses,
+    task_categories, difficulty_categories, priority_categories TO app_manager;
+GRANT SELECT, INSERT, UPDATE, DELETE ON projects           TO app_manager;
 GRANT SELECT, INSERT, UPDATE, DELETE ON comments           TO app_manager;
 GRANT SELECT, INSERT, UPDATE, DELETE ON tasks              TO app_manager;
 GRANT SELECT, INSERT, UPDATE, DELETE ON project_user_roles TO app_manager;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_manager;
 
 -- Admins: unrestricted access to all project data
 GRANT SELECT ON view_member_tasks, view_project_summary, view_admin_tasks TO app_admin;
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-    projects, tasks, comments, project_user_roles, task_statuses, task_categories TO app_admin;
+    projects, tasks, comments, project_user_roles, task_statuses,
+    task_categories, difficulty_categories, priority_categories TO app_admin;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_admin;
 
 -- Stored function: close a task with business rule validation
 CREATE OR REPLACE FUNCTION close_task(p_task_id INT)
@@ -192,6 +214,8 @@ BEGIN
     UPDATE tasks SET status_id = v_closed_status_id, end_date = NOW() WHERE id = p_task_id;
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION close_task(INT) TO app_manager, app_admin;
 
 -- Trigger function: automatically manage task start/end dates on status transitions
 CREATE OR REPLACE FUNCTION fn_task_status_dates()
@@ -218,3 +242,28 @@ CREATE TRIGGER trg_task_status_dates
     BEFORE UPDATE ON tasks
     FOR EACH ROW
     EXECUTE FUNCTION fn_task_status_dates();
+
+-- Dedicated application service account (non-superuser).
+-- The application must connect as app_service, never as the PostgreSQL
+-- superuser (postgres). This satisfies the requirement that the DBA role
+-- must not hold unrestricted DBMS privileges.
+-- Replace 'CHANGE_ME' with a strong password before running in production.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_service') THEN
+        CREATE ROLE app_service WITH LOGIN PASSWORD 'CHANGE_ME'
+            NOSUPERUSER NOCREATEDB NOCREATEROLE;
+    END IF;
+END $$;
+
+-- Grant the service account the ability to SET ROLE into each application role.
+-- Without this, SET ROLE in BeforeAcquire (db.go) would be rejected.
+GRANT app_member  TO app_service;
+GRANT app_manager TO app_service;
+GRANT app_admin   TO app_service;
+
+-- Schema-level access needed before any SET ROLE takes effect.
+GRANT USAGE ON SCHEMA public TO app_service;
+
+-- app_service itself holds no direct table privileges; all data access is
+-- gated behind SET ROLE, enforcing least privilege at the connection level.

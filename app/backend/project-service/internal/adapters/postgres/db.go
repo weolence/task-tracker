@@ -4,13 +4,46 @@ import (
 	"context"
 	"fmt"
 
+	"project-service/internal/appctx"
 	"project-service/internal/config"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func NewPool(ctx context.Context, cfg config.PostgresConfig) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, cfg.URL)
+	poolConfig, err := pgxpool.ParseConfig(cfg.URL)
+	if err != nil {
+		return nil, fmt.Errorf("parse pgxpool config: %w", err)
+	}
+
+	// Switch the DB session role to the role stored in the request context.
+	// This enforces DB-level access control on top of application-level middleware.
+	poolConfig.BeforeAcquire = func(ctx context.Context, conn *pgx.Conn) bool {
+		dbRole := appctx.GetDBRole(ctx)
+		if dbRole == "" {
+			return true
+		}
+		switch dbRole {
+		case "app_member", "app_manager", "app_admin":
+		default:
+			return false
+		}
+		if _, err := conn.Exec(ctx, "SET ROLE "+dbRole); err != nil {
+			return false
+		}
+		return true
+	}
+
+	// Always reset the role when a connection is returned to the pool.
+	poolConfig.AfterRelease = func(conn *pgx.Conn) bool {
+		if _, err := conn.Exec(context.Background(), "RESET ROLE"); err != nil {
+			return false
+		}
+		return true
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create pgxpool: %w", err)
 	}
@@ -41,12 +74,24 @@ func InitSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 	);
 
+	-- Supertype: common category attributes shared by all category subtypes
 	CREATE TABLE IF NOT EXISTS task_categories (
 		id SERIAL PRIMARY KEY,
 		name TEXT NOT NULL,
-		category_type TEXT NOT NULL CHECK (category_type IN ('group', 'difficulty', 'priority')),
-		parent_id INT REFERENCES task_categories(id) ON DELETE SET NULL,
+		category_type TEXT NOT NULL CHECK (category_type IN ('difficulty', 'priority')),
 		UNIQUE (category_type, name)
+	);
+
+	-- Subtype: difficulty ratings (Easy=1, Medium=2, Hard=3)
+	CREATE TABLE IF NOT EXISTS difficulty_categories (
+		id    INT PRIMARY KEY REFERENCES task_categories(id) ON DELETE CASCADE,
+		level INT NOT NULL CHECK (level BETWEEN 1 AND 3)
+	);
+
+	-- Subtype: priority ratings (Low=1, Medium=2, High=3)
+	CREATE TABLE IF NOT EXISTS priority_categories (
+		id    INT PRIMARY KEY REFERENCES task_categories(id) ON DELETE CASCADE,
+		level INT NOT NULL CHECK (level BETWEEN 1 AND 3)
 	);
 
 	CREATE TABLE IF NOT EXISTS task_statuses (
@@ -84,37 +129,33 @@ func InitSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	('Closed')
 	ON CONFLICT (name) DO NOTHING;
 
-	INSERT INTO task_categories (name, category_type, parent_id)
-	VALUES ('Difficulty', 'group', NULL)
+	INSERT INTO task_categories (name, category_type)
+	VALUES ('Easy', 'difficulty'), ('Medium', 'difficulty'), ('Hard', 'difficulty')
 	ON CONFLICT (category_type, name) DO NOTHING;
 
-	INSERT INTO task_categories (name, category_type, parent_id)
-	SELECT 'Easy', 'difficulty', id FROM task_categories WHERE category_type = 'group' AND name = 'Difficulty'
+	INSERT INTO difficulty_categories (id, level)
+	SELECT id, 1 FROM task_categories WHERE category_type = 'difficulty' AND name = 'Easy'
+	ON CONFLICT (id) DO NOTHING;
+	INSERT INTO difficulty_categories (id, level)
+	SELECT id, 2 FROM task_categories WHERE category_type = 'difficulty' AND name = 'Medium'
+	ON CONFLICT (id) DO NOTHING;
+	INSERT INTO difficulty_categories (id, level)
+	SELECT id, 3 FROM task_categories WHERE category_type = 'difficulty' AND name = 'Hard'
+	ON CONFLICT (id) DO NOTHING;
+
+	INSERT INTO task_categories (name, category_type)
+	VALUES ('Low', 'priority'), ('Medium', 'priority'), ('High', 'priority')
 	ON CONFLICT (category_type, name) DO NOTHING;
 
-	INSERT INTO task_categories (name, category_type, parent_id)
-	SELECT 'Medium', 'difficulty', id FROM task_categories WHERE category_type = 'group' AND name = 'Difficulty'
-	ON CONFLICT (category_type, name) DO NOTHING;
-
-	INSERT INTO task_categories (name, category_type, parent_id)
-	SELECT 'Hard', 'difficulty', id FROM task_categories WHERE category_type = 'group' AND name = 'Difficulty'
-	ON CONFLICT (category_type, name) DO NOTHING;
-
-	INSERT INTO task_categories (name, category_type, parent_id)
-	VALUES ('Priority', 'group', NULL)
-	ON CONFLICT (category_type, name) DO NOTHING;
-
-	INSERT INTO task_categories (name, category_type, parent_id)
-	SELECT 'Low', 'priority', id FROM task_categories WHERE category_type = 'group' AND name = 'Priority'
-	ON CONFLICT (category_type, name) DO NOTHING;
-
-	INSERT INTO task_categories (name, category_type, parent_id)
-	SELECT 'Medium', 'priority', id FROM task_categories WHERE category_type = 'group' AND name = 'Priority'
-	ON CONFLICT (category_type, name) DO NOTHING;
-
-	INSERT INTO task_categories (name, category_type, parent_id)
-	SELECT 'High', 'priority', id FROM task_categories WHERE category_type = 'group' AND name = 'Priority'
-	ON CONFLICT (category_type, name) DO NOTHING;
+	INSERT INTO priority_categories (id, level)
+	SELECT id, 1 FROM task_categories WHERE category_type = 'priority' AND name = 'Low'
+	ON CONFLICT (id) DO NOTHING;
+	INSERT INTO priority_categories (id, level)
+	SELECT id, 2 FROM task_categories WHERE category_type = 'priority' AND name = 'Medium'
+	ON CONFLICT (id) DO NOTHING;
+	INSERT INTO priority_categories (id, level)
+	SELECT id, 3 FROM task_categories WHERE category_type = 'priority' AND name = 'High'
+	ON CONFLICT (id) DO NOTHING;
 
 	CREATE INDEX IF NOT EXISTS comments_task_id_idx              ON comments(task_id);
 	CREATE INDEX IF NOT EXISTS comments_author_id_idx            ON comments(author_id);
@@ -176,19 +217,27 @@ func InitSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	LEFT JOIN task_categories tc_prio ON tc_prio.id = t.priority_category_id;
 
 	GRANT SELECT ON view_member_tasks, view_project_summary,
-	    projects, project_user_roles, task_statuses, task_categories TO app_member;
+	    projects, project_user_roles, task_statuses,
+	    task_categories, difficulty_categories, priority_categories TO app_member;
 	GRANT SELECT, INSERT, UPDATE, DELETE ON comments TO app_member;
-	GRANT UPDATE (status_id) ON tasks TO app_member;
+	GRANT SELECT ON tasks TO app_member;
+	GRANT UPDATE (status_id, assignee_id, start_date, end_date) ON tasks TO app_member;
+	GRANT USAGE, SELECT ON SEQUENCE comments_id_seq TO app_member;
 
 	GRANT SELECT ON view_member_tasks, view_project_summary,
-	    projects, project_user_roles, task_statuses, task_categories TO app_manager;
+	    project_user_roles, task_statuses,
+	    task_categories, difficulty_categories, priority_categories TO app_manager;
+	GRANT SELECT, INSERT, UPDATE, DELETE ON projects           TO app_manager;
 	GRANT SELECT, INSERT, UPDATE, DELETE ON comments           TO app_manager;
 	GRANT SELECT, INSERT, UPDATE, DELETE ON tasks              TO app_manager;
 	GRANT SELECT, INSERT, UPDATE, DELETE ON project_user_roles TO app_manager;
+	GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_manager;
 
 	GRANT SELECT ON view_member_tasks, view_project_summary, view_admin_tasks TO app_admin;
 	GRANT SELECT, INSERT, UPDATE, DELETE ON
-	    projects, tasks, comments, project_user_roles, task_statuses, task_categories TO app_admin;
+	    projects, tasks, comments, project_user_roles, task_statuses,
+	    task_categories, difficulty_categories, priority_categories TO app_admin;
+	GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_admin;
 
 	CREATE OR REPLACE FUNCTION close_task(p_task_id INT)
 	RETURNS VOID LANGUAGE plpgsql AS $$
@@ -209,6 +258,8 @@ func InitSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	    UPDATE tasks SET status_id = v_closed_status_id, end_date = NOW() WHERE id = p_task_id;
 	END;
 	$$;
+
+	GRANT EXECUTE ON FUNCTION close_task(INT) TO app_manager, app_admin;
 
 	CREATE OR REPLACE FUNCTION fn_task_status_dates()
 	RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -234,6 +285,17 @@ func InitSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	    BEFORE UPDATE ON tasks
 	    FOR EACH ROW
 	    EXECUTE FUNCTION fn_task_status_dates();
+
+	DO $$
+	BEGIN
+	    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_service') THEN
+	        CREATE ROLE app_service WITH LOGIN PASSWORD 'CHANGE_ME'
+	            NOSUPERUSER NOCREATEDB NOCREATEROLE;
+	    END IF;
+	END $$;
+
+	GRANT app_member, app_manager, app_admin TO app_service;
+	GRANT USAGE ON SCHEMA public TO app_service;
 	`)
 	return err
 }

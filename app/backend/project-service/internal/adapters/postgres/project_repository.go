@@ -407,15 +407,21 @@ func (r *ProjectRepository) UpdateProjectStatus(ctx context.Context, projectID i
 }
 
 func (r *ProjectRepository) DeleteProject(ctx context.Context, projectID int32) error {
-	if _, err := r.pool.Exec(ctx, `DELETE FROM project_user_roles WHERE project_id = $1`, projectID); err != nil {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM project_user_roles WHERE project_id = $1`, projectID); err != nil {
 		return err
 	}
 
-	if _, err := r.pool.Exec(ctx, `DELETE FROM tasks WHERE project_id = $1`, projectID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM tasks WHERE project_id = $1`, projectID); err != nil {
 		return err
 	}
 
-	cmdTag, err := r.pool.Exec(ctx, `DELETE FROM projects WHERE id = $1`, projectID)
+	cmdTag, err := tx.Exec(ctx, `DELETE FROM projects WHERE id = $1`, projectID)
 	if err != nil {
 		return err
 	}
@@ -424,5 +430,5 @@ func (r *ProjectRepository) DeleteProject(ctx context.Context, projectID int32) 
 		return errors.New("project not found")
 	}
 
-	return nil
+	return tx.Commit(ctx)
 }

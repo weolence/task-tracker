@@ -7,9 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	userv1 "auth-service/api/proto/userv1"
+	"project-service/internal/appctx"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -35,6 +39,7 @@ func AuthMiddleware(authServiceURL string) func(http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), UserIDKey, authData.UserId)
 			ctx = context.WithValue(ctx, UserRoleKey, authData.Role)
+			ctx = appctx.WithDBRole(ctx, appRoleToDBRole(authData.Role))
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -64,6 +69,94 @@ func AdminOnly(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// appRoleToDBRole maps system-level JWT roles to their most restrictive DB role.
+// Routes that require manager-level DB access must also apply ProjectRoleMiddleware
+// or AsManagerMiddleware to elevate the role when appropriate.
+func appRoleToDBRole(appRole string) string {
+	if appRole == "admin" {
+		return "app_admin"
+	}
+	return "app_member"
+}
+
+// ProjectRoleMiddleware elevates the DB role to app_manager for authenticated
+// users who are managers of the project given by the "project_id" query param.
+func ProjectRoleMiddleware(pool *pgxpool.Pool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !IsAdmin(r.Context()) {
+				if userID, ok := GetUserID(r.Context()); ok {
+					if s := r.URL.Query().Get("project_id"); s != "" {
+						if projectID, err := strconv.Atoi(s); err == nil {
+							if isProjectManager(pool, r.Context(), projectID, userID) {
+								r = r.WithContext(appctx.WithDBRole(r.Context(), "app_manager"))
+							}
+						}
+					}
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// TaskRoleMiddleware elevates the DB role to app_manager for authenticated users
+// who are managers of the project that owns the task identified in the URL path.
+// Expected path format: /api/tasks/{taskID}[/...]
+func TaskRoleMiddleware(pool *pgxpool.Pool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !IsAdmin(r.Context()) {
+				if userID, ok := GetUserID(r.Context()); ok {
+					// /api/tasks/{id}[/...] splits to ["","api","tasks","id",...]
+					parts := strings.Split(r.URL.Path, "/")
+					if len(parts) >= 4 {
+						if taskID, err := strconv.Atoi(parts[3]); err == nil {
+							// Resolve the task's project using the pool owner's role
+							// (empty DB role in context bypasses SET ROLE in BeforeAcquire)
+							var projectID int
+							pool.QueryRow(
+								appctx.WithDBRole(r.Context(), ""),
+								`SELECT project_id FROM tasks WHERE id = $1`,
+								taskID,
+							).Scan(&projectID)
+							if projectID != 0 && isProjectManager(pool, r.Context(), projectID, userID) {
+								r = r.WithContext(appctx.WithDBRole(r.Context(), "app_manager"))
+							}
+						}
+					}
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// AsManagerMiddleware unconditionally sets the DB role to app_manager for
+// non-admin users. Use for endpoints where any authenticated user may perform
+// manager-level operations, such as creating a new project.
+func AsManagerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !IsAdmin(r.Context()) {
+			r = r.WithContext(appctx.WithDBRole(r.Context(), "app_manager"))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// isProjectManager returns true if userID holds the 'manager' role for projectID.
+// The lookup runs with an empty DB role so it uses the pool owner's privileges,
+// avoiding the chicken-and-egg problem of determining the role before it is set.
+func isProjectManager(pool *pgxpool.Pool, ctx context.Context, projectID int, userID int32) bool {
+	var role string
+	pool.QueryRow(
+		appctx.WithDBRole(ctx, ""),
+		`SELECT role FROM project_user_roles WHERE project_id = $1 AND user_id = $2`,
+		projectID, userID,
+	).Scan(&role)
+	return role == "manager"
 }
 
 func extractToken(r *http.Request) (string, error) {
