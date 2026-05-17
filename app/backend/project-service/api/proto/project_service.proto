@@ -69,6 +69,7 @@ service ProjectService {
   rpc GetProjectMembersDetails(ProjectIdRequest)        returns (projectv1.ProjectMembersResponse);
   rpc AddProjectMember(AddMemberRequest)                returns (projectv1.OperationResponse);
   rpc TransferProjectManager(TransferManagerRequest)    returns (projectv1.OperationResponse);
+  rpc DeleteProject(ProjectIdRequest)                   returns (projectv1.OperationResponse);
   rpc IsUserManager(IsManagerRequest)                   returns (projectv1.IsUserManagerResponse);
   rpc GetUserProjects(UserProjectsRequest)              returns (projectv1.DashboardResponse);
 

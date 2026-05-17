@@ -313,6 +313,18 @@ func (r *TaskRepository) CloseTask(ctx context.Context, taskID int) error {
 	return nil
 }
 
+func (r *TaskRepository) UnassignTasksByMemberAndProject(ctx context.Context, projectID int, userID int32) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE tasks
+		SET assignee_id = NULL,
+		    status = $1,
+		    start_date = NULL,
+		    end_date = NULL
+		WHERE project_id = $2 AND assignee_id = $3 AND status != $4
+	`, domain.TaskStatusNotStarted, projectID, userID, domain.TaskStatusClosed)
+	return err
+}
+
 func scanTasks(rows interface {
 	Next() bool
 	Scan(dest ...any) error

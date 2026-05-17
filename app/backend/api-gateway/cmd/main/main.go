@@ -51,6 +51,7 @@ func run() error {
 	mux.HandleFunc("/api/auth/login", authH.Login)
 
 	// ── Protected auth routes ─────────────────────────────────────────────────
+	mux.Handle("/api/user-id", authMW(http.HandlerFunc(authH.GetCurrentUserID)))
 	mux.Handle("/api/auth/user-info", authMW(http.HandlerFunc(authH.GetUserInfo)))
 
 	// ── Admin: user management ────────────────────────────────────────────────
@@ -76,6 +77,9 @@ func run() error {
 	mux.Handle("/api/project-members", authMW(http.HandlerFunc(projH.GetProjectMembers)))
 	mux.Handle("/api/project-members-details", authMW(http.HandlerFunc(projH.GetProjectMembersDetails)))
 	mux.Handle("/api/project-members/add", authMW(http.HandlerFunc(projH.AddProjectMember)))
+	mux.Handle("/api/project-members/remove", authMW(http.HandlerFunc(projH.RemoveProjectMember)))
+	mux.Handle("/api/project/leave", authMW(http.HandlerFunc(projH.LeaveProject)))
+	mux.Handle("/api/project/delete", authMW(http.HandlerFunc(projH.DeleteProject)))
 	mux.Handle("/api/project-manager/transfer", authMW(http.HandlerFunc(projH.TransferProjectManager)))
 	mux.Handle("/api/is-manager", authMW(http.HandlerFunc(projH.IsUserManager)))
 	mux.Handle("/api/user-projects", authMW(http.HandlerFunc(projH.GetUserProjects)))

@@ -283,6 +283,14 @@ func (r *ProjectRepository) TransferProjectManager(ctx context.Context, projectI
 	return tx.Commit(ctx)
 }
 
+func (r *ProjectRepository) RemoveProjectMember(ctx context.Context, projectID int, userID int32) error {
+	_, err := r.pool.Exec(ctx, `
+		DELETE FROM project_members
+		WHERE project_id = $1 AND user_id = $2
+	`, projectID, userID)
+	return err
+}
+
 func (r *ProjectRepository) UpdateProject(ctx context.Context, project domain.Project) error {
 	var endDate any
 	if project.EndDate != nil && *project.EndDate != "" {

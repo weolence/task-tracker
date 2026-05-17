@@ -117,19 +117,22 @@
 </head>
 <body>
   <div class="container">
-    <a href="/" class="back-link">&larr; Назад к проектам</a>
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:4px;">
+      <a href="/" class="back-link" style="margin-bottom:0;">&larr; Назад к проектам</a>
+      <button id="delete-project-btn" class="btn btn-danger" type="button" style="display:none;" onclick="deleteProject()">Удалить проект</button>
+    </div>
     <h1 id="project-title">Задачи проекта</h1>
     <div id="message" class="message" style="display:none"></div>
 
-    <div id="manager-view" style="display:none;">
-      <section style="margin-bottom: 24px;">
-        <div class="section-header">
-          <h2>Состав проекта</h2>
-          <button id="invite-member-btn" class="icon-btn" type="button" aria-label="Пригласить участника" title="Пригласить участника">+</button>
-        </div>
-        <div id="members-list"></div>
-      </section>
+    <section style="margin-bottom: 24px;">
+      <div class="section-header">
+        <h2>Состав проекта</h2>
+        <button id="invite-member-btn" class="icon-btn" type="button" aria-label="Пригласить участника" title="Пригласить участника" style="display:none;">+</button>
+      </div>
+      <div id="members-list"></div>
+    </section>
 
+    <div id="manager-view" style="display:none;">
       <section class="pool-section">
         <div class="section-header">
           <h2>Пул задач</h2>
@@ -377,6 +380,8 @@
         const data = await apiRequest(`/api/is-manager?project_id=${projectId}`);
         isManager = data && data.is_manager;
         document.getElementById('manager-view').style.display = isManager ? 'block' : 'none';
+        document.getElementById('invite-member-btn').style.display = isManager ? 'inline-flex' : 'none';
+        document.getElementById('delete-project-btn').style.display = isManager ? 'inline-block' : 'none';
       } catch (error) {
         showMessage(error.message, true);
       }
@@ -423,12 +428,15 @@
 
     const getMemberDisplayName = (member) => `${member.name} ${member.surname}`;
 
-    const renderProjectMemberItem = (member, showTransferAction = false) => `
+    const renderProjectMemberItem = (member, showManagerActions = false) => `
       <li>
         <div class="member-row">
           <span class="member-name" onclick="showUserProfile(${member.id})">${escapeHtml(getMemberDisplayName(member))}</span>
-          ${showTransferAction
-            ? `<div class="member-actions"><button type="button" class="btn btn-secondary btn-small member-transfer-btn" onclick="transferProjectManager(${member.id})">Передать управление</button></div>`
+          ${showManagerActions
+            ? `<div class="member-actions">
+                <button type="button" class="btn btn-secondary btn-small member-transfer-btn" onclick="transferProjectManager(${member.id})">Передать управление</button>
+                <button type="button" class="btn btn-danger btn-small" onclick="removeProjectMember(${member.id})">Удалить из проекта</button>
+              </div>`
             : ''}
         </div>
       </li>
@@ -800,12 +808,15 @@
             `;
           }
 
+          const isCurrentUserParticipant = !isManager && userId != null && members.includes(userId);
+
           html += `
             <div class="members-section">
               <h3>Участники проекта</h3>
               ${otherMembers.length > 0
                 ? `<ul class="members-ul">${otherMembers.map(member => renderProjectMemberItem(member, isManager)).join('')}</ul>`
                 : '<p>Нет участников</p>'}
+              ${isCurrentUserParticipant ? `<button type="button" class="btn btn-danger" style="margin-top:12px;" onclick="leaveProject()">Покинуть проект</button>` : ''}
             </div>
           `;
 
@@ -1168,6 +1179,78 @@
       hideAssignModal();
     };
 
+    const removeProjectMember = async (memberId) => {
+      if (!isManager) {
+        showMessage('Удаление участников доступно только менеджеру.', true);
+        return;
+      }
+
+      const member = memberDetails[memberId];
+      if (!member) {
+        showMessage('Не удалось определить выбранного участника.', true);
+        return;
+      }
+
+      const confirmed = window.confirm(`Удалить участника ${getMemberDisplayName(member)} из проекта? Все его задачи будут возвращены в пул.`);
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/project-members/remove?project_id=${projectId}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ member_id: memberId }),
+        });
+
+        await Promise.all([loadTasks(), loadMembers()]);
+        showMessage(`Участник ${getMemberDisplayName(member)} удалён из проекта.`, false);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
+    const leaveProject = async () => {
+      const confirmed = window.confirm('Покинуть проект? Все ваши задачи будут возвращены в пул.');
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/project/leave?project_id=${projectId}`, {
+          method: 'POST',
+        });
+
+        window.location.href = '/';
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
+    const deleteProject = async () => {
+      if (!isManager) {
+        showMessage('Удаление проекта доступно только менеджеру.', true);
+        return;
+      }
+
+      const projectName = projectInfo && projectInfo.name ? `"${projectInfo.name}"` : 'этот проект';
+      const confirmed = window.confirm(`Удалить проект ${projectName}? Это действие необратимо — все задачи и участники будут удалены.`);
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await apiRequest(`/api/project/delete?project_id=${projectId}`, {
+          method: 'DELETE',
+        });
+        window.location.href = '/';
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
+    window.deleteProject = deleteProject;
+    window.removeProjectMember = removeProjectMember;
+    window.leaveProject = leaveProject;
     window.assignTaskToSelected = assignTaskToSelected;
     window.startCommentEdit = startCommentEdit;
     window.cancelCommentEdit = cancelCommentEdit;

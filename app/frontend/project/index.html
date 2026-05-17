@@ -25,6 +25,8 @@
     .entity-meta { margin-top: 10px; font-size: 12px; color: #94a3b8; letter-spacing: 0.02em; }
     .empty-state { color: #475569; }
     .logout { margin-left: 12px; background: #ef4444; }
+    .admin-btn { margin-left: 12px; background: #7c3aed; }
+    .admin-btn:hover { background: #6d28d9; }
   </style>
 </head>
 <body>
@@ -35,6 +37,7 @@
         <p id="subtitle">Загрузка...</p>
       </div>
       <div>
+        <button id="admin-button" class="admin-btn" style="display:none;">Панель администратора</button>
         <button id="refresh-button">Обновить</button>
         <button id="logout-button" class="logout">Выйти</button>
       </div>
@@ -64,6 +67,12 @@
 
   <script>
     const storageKey = 'project_service_jwt';
+
+    const decodeTokenRole = (jwt) => {
+      try {
+        return JSON.parse(atob(jwt.split('.')[1])).role || null;
+      } catch { return null; }
+    };
 
     const showMessage = (text, isError = false) => {
       const message = document.getElementById('message');
@@ -206,12 +215,25 @@
       loadDashboard();
     });
 
+    document.getElementById('admin-button').addEventListener('click', () => {
+      const adminUrl = new URL(window.location.href);
+      adminUrl.port = '8080';
+      adminUrl.pathname = '/admin';
+      adminUrl.search = '';
+      adminUrl.hash = '';
+      adminUrl.searchParams.set('token', token());
+      window.location.href = adminUrl.toString();
+    });
+
     document.getElementById('logout-button').addEventListener('click', () => {
       clearToken();
       window.location.href = buildServiceUrl('8080');
     });
 
     if (requireAuth()) {
+      if (decodeTokenRole(token()) === 'admin') {
+        document.getElementById('admin-button').style.display = 'inline-block';
+      }
       loadDashboard();
     }
   </script>

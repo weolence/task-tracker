@@ -304,6 +304,107 @@ func (h *ProjectHandler) TransferProjectManager(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusOK)
 }
 
+func (h *ProjectHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := r.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(w, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		MemberID int32 `json:"member_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.MemberID == 0 {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.projectUseCase.RemoveProjectMember(r.Context(), projectID, userID, req.MemberID); err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "access denied" {
+			status = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *ProjectHandler) LeaveProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := r.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(w, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.projectUseCase.LeaveProject(r.Context(), projectID, userID); err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "manager cannot leave the project; transfer management first" {
+			status = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	projectIDStr := r.URL.Query().Get("project_id")
+	projectID, err := strconv.Atoi(projectIDStr)
+	if err != nil {
+		http.Error(w, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.projectUseCase.DeleteProject(r.Context(), projectID, userID); err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "access denied" {
+			status = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (h *ProjectHandler) GetUserProjects(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.URL.Query().Get("user_id")
 	userID, err := strconv.Atoi(userIDStr)

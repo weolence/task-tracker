@@ -19,4 +19,5 @@ type TaskRepository interface {
 	UpdateTaskStatus(ctx context.Context, taskID int, status domain.TaskStatus) error
 	UpdateTask(ctx context.Context, task domain.Task) error
 	CloseTask(ctx context.Context, taskID int) error
+	UnassignTasksByMemberAndProject(ctx context.Context, projectID int, userID int32) error
 }

@@ -1,6 +1,7 @@
 package httpadapter
 
 import (
+	"fmt"
 	"net/http"
 
 	authsvcv1 "auth-service/api/proto/authsvcv1"
@@ -52,6 +53,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, resp)
+}
+
+func (h *AuthHandler) GetCurrentUserID(w http.ResponseWriter, r *http.Request) {
+	userID, _ := r.Context().Value(ctxUserID).(int32)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"user_id":%d}`, userID)
 }
 
 func (h *AuthHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {

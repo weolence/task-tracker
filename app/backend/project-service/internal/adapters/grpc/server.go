@@ -186,6 +186,20 @@ func (s *ProjectServer) GetUserProjects(ctx context.Context, req *projectsvcv1.U
 	return &resp, nil
 }
 
+func (s *ProjectServer) DeleteProject(ctx context.Context, req *projectsvcv1.ProjectIdRequest) (*projectv1.OperationResponse, error) {
+	userID, _, err := userCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.projects.DeleteProject(ctx, int(req.ProjectId), userID); err != nil {
+		if err.Error() == "access denied" {
+			return nil, status.Error(codes.PermissionDenied, "access denied")
+		}
+		return nil, status.Errorf(codes.Internal, "delete project: %v", err)
+	}
+	return &projectv1.OperationResponse{Message: "project deleted"}, nil
+}
+
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 
 func (s *ProjectServer) CreateTask(ctx context.Context, req *projectv1.CreateTaskRequest) (*projectv1.Task, error) {
@@ -446,6 +460,36 @@ func (s *ProjectServer) DeleteComment(ctx context.Context, req *projectsvcv1.Del
 		return nil, status.Errorf(codes.Internal, "delete comment: %v", err)
 	}
 	return &projectv1.OperationResponse{Message: "comment deleted"}, nil
+}
+
+// ─── Member management ────────────────────────────────────────────────────────
+
+func (s *ProjectServer) RemoveProjectMember(ctx context.Context, req *projectsvcv1.TransferManagerRequest) (*projectv1.OperationResponse, error) {
+	userID, _, err := userCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.projects.RemoveProjectMember(ctx, int(req.ProjectId), userID, req.NewManagerId); err != nil {
+		if err.Error() == "access denied" {
+			return nil, status.Error(codes.PermissionDenied, "access denied")
+		}
+		return nil, status.Errorf(codes.InvalidArgument, "remove member: %v", err)
+	}
+	return &projectv1.OperationResponse{Message: "member removed"}, nil
+}
+
+func (s *ProjectServer) LeaveProject(ctx context.Context, req *projectsvcv1.ProjectIdRequest) (*projectv1.OperationResponse, error) {
+	userID, _, err := userCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.projects.LeaveProject(ctx, int(req.ProjectId), userID); err != nil {
+		if err.Error() == "access denied" {
+			return nil, status.Error(codes.PermissionDenied, "access denied")
+		}
+		return nil, status.Errorf(codes.InvalidArgument, "leave project: %v", err)
+	}
+	return &projectv1.OperationResponse{Message: "left project"}, nil
 }
 
 // ─── Admin ───────────────────────────────────────────────────────────────────

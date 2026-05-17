@@ -133,6 +133,10 @@ func (h *AdminHandler) ProxyComment(w http.ResponseWriter, r *http.Request, path
 	h.proxyRequest(w, r, path)
 }
 
+func (h *AdminHandler) ProxyMembers(w http.ResponseWriter, r *http.Request, path string) {
+	h.proxyRequest(w, r, path)
+}
+
 func (h *AdminHandler) proxyRequest(w http.ResponseWriter, r *http.Request, path string) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -141,7 +145,12 @@ func (h *AdminHandler) proxyRequest(w http.ResponseWriter, r *http.Request, path
 	}
 	defer r.Body.Close()
 
-	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, h.projectServiceURL+path, bytes.NewReader(body))
+	target := h.projectServiceURL + path
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+
+	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, target, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "failed to create request", http.StatusInternalServerError)
 		return

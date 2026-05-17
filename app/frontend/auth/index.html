@@ -95,19 +95,10 @@
           email: document.getElementById('login-email').value,
           password: document.getElementById('login-password').value,
         });
-        const authInfo = await sendJson('/validate-token', { token: result.token });
-        const isAdmin = authInfo.role === 'admin';
-        showMessage(
-          isAdmin
-            ? 'Вход выполнен успешно. Перенаправляем в админскую панель...'
-            : 'Вход выполнен успешно. Перенаправляем на страницу проектов...',
-          false
-        );
+        showMessage('Вход выполнен успешно. Перенаправляем на страницу проектов...', false);
         const projectUrl = buildServiceUrl('8081');
         projectUrl.searchParams.set('token', result.token);
-        window.location.href = isAdmin
-          ? `/admin?token=${encodeURIComponent(result.token)}`
-          : projectUrl.toString();
+        window.location.href = projectUrl.toString();
       } catch (error) {
         showMessage(error.message, true);
       }

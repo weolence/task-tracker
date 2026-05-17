@@ -320,6 +320,72 @@ func (uc *ProjectUseCase) GetProjectInfo(ctx context.Context, projectID int, use
 	}, nil
 }
 
+func (uc *ProjectUseCase) RemoveProjectMember(ctx context.Context, projectID int, requesterID int32, targetID int32) error {
+	if targetID == 0 {
+		return errors.New("member_id is required")
+	}
+
+	isManager, err := uc.IsUserManager(ctx, requesterID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isManager {
+		return errors.New("access denied")
+	}
+
+	project, err := uc.projectRepo.GetProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if project == nil {
+		return errors.New("project not found")
+	}
+	if project.ManagerID == targetID {
+		return errors.New("cannot remove the project manager")
+	}
+
+	isMember, err := uc.projectRepo.IsUserMemberOfProject(ctx, targetID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return errors.New("user is not a project member")
+	}
+
+	if err := uc.taskRepo.UnassignTasksByMemberAndProject(ctx, projectID, targetID); err != nil {
+		return err
+	}
+
+	return uc.projectRepo.RemoveProjectMember(ctx, projectID, targetID)
+}
+
+func (uc *ProjectUseCase) LeaveProject(ctx context.Context, projectID int, userID int32) error {
+	project, err := uc.projectRepo.GetProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if project == nil {
+		return errors.New("project not found")
+	}
+	if project.ManagerID == userID {
+		return errors.New("manager cannot leave the project; transfer management first")
+	}
+
+	isMember, err := uc.projectRepo.IsUserMemberOfProject(ctx, userID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return errors.New("you are not a member of this project")
+	}
+
+	if err := uc.taskRepo.UnassignTasksByMemberAndProject(ctx, projectID, userID); err != nil {
+		return err
+	}
+
+	return uc.projectRepo.RemoveProjectMember(ctx, projectID, userID)
+}
+
 func (uc *ProjectUseCase) GetProjectForAdmin(ctx context.Context, projectID *int32, name *string) (*projectv1.Project, error) {
 	var (
 		project *domain.Project
@@ -371,6 +437,17 @@ func (uc *ProjectUseCase) UpdateProjectForAdmin(ctx context.Context, project *pr
 		StartDate:   startDate,
 		EndDate:     project.EndDate,
 	})
+}
+
+func (uc *ProjectUseCase) DeleteProject(ctx context.Context, projectID int, managerID int32) error {
+	isManager, err := uc.IsUserManager(ctx, managerID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isManager {
+		return errors.New("access denied")
+	}
+	return uc.projectRepo.DeleteProject(ctx, int32(projectID))
 }
 
 func (uc *ProjectUseCase) DeleteProjectForAdmin(ctx context.Context, projectID int32) error {

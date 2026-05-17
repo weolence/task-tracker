@@ -214,6 +214,70 @@ func (h *ProjectHandler) GetUserProjects(w http.ResponseWriter, r *http.Request)
 	writeProtoJSON(w, http.StatusOK, resp)
 }
 
+func (h *ProjectHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	pid, err := queryInt(r, "project_id")
+	if err != nil {
+		http.Error(w, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+	var body struct {
+		MemberID int32 `json:"member_id"`
+	}
+	if err := readJSON(r, &body); err != nil || body.MemberID == 0 {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.project.RemoveProjectMember(outgoingCtx(r), &projectsvcv1.TransferManagerRequest{
+		ProjectId:    pid,
+		NewManagerId: body.MemberID,
+	})
+	if err != nil {
+		grpcStatus(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, resp)
+}
+
+func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	pid, err := queryInt(r, "project_id")
+	if err != nil {
+		http.Error(w, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.project.DeleteProject(outgoingCtx(r), &projectsvcv1.ProjectIdRequest{ProjectId: pid})
+	if err != nil {
+		grpcStatus(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, resp)
+}
+
+func (h *ProjectHandler) LeaveProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	pid, err := queryInt(r, "project_id")
+	if err != nil {
+		http.Error(w, "invalid project_id", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.project.LeaveProject(outgoingCtx(r), &projectsvcv1.ProjectIdRequest{ProjectId: pid})
+	if err != nil {
+		grpcStatus(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, resp)
+}
+
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 
 func (h *ProjectHandler) CreateTask(w http.ResponseWriter, r *http.Request) {

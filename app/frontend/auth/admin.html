@@ -53,6 +53,7 @@
         <p id="subtitle">Проверяем токен и права доступа...</p>
       </div>
       <div class="actions">
+        <button id="dashboard-button" class="secondary">К проектам</button>
         <button id="clear-button" class="secondary">Очистить</button>
         <button id="logout-button" class="danger">Выйти</button>
       </div>
@@ -101,12 +102,27 @@
           <button type="button" id="delete-button" class="danger">Удалить</button>
         </div>
       </form>
+
+      <div id="participants-panel" class="hidden" style="margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+        <h3 style="margin: 0 0 12px;">Участники проекта</h3>
+        <div id="participants-list" style="margin-bottom: 16px;"></div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="new-participant-email">Email нового участника</label>
+            <input type="email" id="new-participant-email" placeholder="user@example.com" />
+          </div>
+        </div>
+        <div class="toolbar">
+          <button type="button" id="add-participant-button">Добавить участника</button>
+        </div>
+      </div>
     </section>
   </div>
 
   <script>
     const storageKey = 'admin_service_jwt';
     let currentEntity = null;
+    let currentProjectId = null;
 
     const entityConfigs = {
       user: {
@@ -133,13 +149,12 @@
       },
       project: {
         title: 'Проект',
-        description: 'Введите `ID` проекта или точное название.',
+        description: 'Введите уникальный `ID` проекта для поиска.',
         searchEndpoint: '/admin/api/projects/get',
         updateEndpoint: '/admin/api/projects',
         deleteEndpoint: '/admin/api/projects',
         searchFields: [
           { name: 'project_id', label: 'ID проекта', type: 'number' },
-          { name: 'name', label: 'Название проекта', type: 'text' },
         ],
         editorFields: [
           { name: 'id', label: 'ID', type: 'number', readonly: true },
@@ -156,14 +171,12 @@
       },
       task: {
         title: 'Задача',
-        description: 'Введите `ID` задачи или связку `project_id + name`.',
+        description: 'Введите уникальный `ID` задачи для поиска.',
         searchEndpoint: '/admin/api/tasks/get',
         updateEndpoint: '/admin/api/tasks',
         deleteEndpoint: '/admin/api/tasks',
         searchFields: [
           { name: 'task_id', label: 'ID задачи', type: 'number' },
-          { name: 'project_id', label: 'ID проекта', type: 'number' },
-          { name: 'name', label: 'Название задачи', type: 'text' },
         ],
         editorFields: [
           { name: 'id', label: 'ID', type: 'number', readonly: true },
@@ -193,14 +206,12 @@
       },
       comment: {
         title: 'Комментарий',
-        description: 'Введите `ID` комментария, `author_id` или `task_id`.',
+        description: 'Введите уникальный `ID` комментария для поиска.',
         searchEndpoint: '/admin/api/comments/get',
         updateEndpoint: '/admin/api/comments',
         deleteEndpoint: '/admin/api/comments',
         searchFields: [
           { name: 'comment_id', label: 'ID комментария', type: 'number' },
-          { name: 'author_id', label: 'ID автора', type: 'number' },
-          { name: 'task_id', label: 'ID задачи', type: 'number' },
         ],
         editorFields: [
           { name: 'id', label: 'ID', type: 'number', readonly: true },
@@ -316,9 +327,12 @@
     const renderSearch = (entity) => {
       const config = entityConfigs[entity];
       currentEntity = entity;
+      currentProjectId = null;
       document.getElementById('workspace-title').textContent = config.title;
       document.getElementById('workspace-description').textContent = config.description;
       document.getElementById('editor-form').classList.add('hidden');
+      document.getElementById('participants-panel').classList.add('hidden');
+      document.getElementById('participants-list').innerHTML = '';
 
       const fields = document.getElementById('search-fields');
       fields.innerHTML = '';
@@ -489,6 +503,17 @@
         const data = await apiRequest(entityConfigs[currentEntity].searchEndpoint, 'POST', payload);
         populateEditor(currentEntity, data);
         showMessage(entityConfigs[currentEntity].title + ' найден.', false);
+
+        const panel = document.getElementById('participants-panel');
+        if (currentEntity === 'project' && data.id) {
+          currentProjectId = data.id;
+          panel.classList.remove('hidden');
+          loadParticipants(currentProjectId);
+        } else {
+          currentProjectId = null;
+          panel.classList.add('hidden');
+          document.getElementById('participants-list').innerHTML = '';
+        }
       } catch (error) {
         showMessage(error.message, true);
       }
@@ -518,15 +543,88 @@
       }
     });
 
+    const renderParticipantItem = (member) => {
+      const item = document.createElement('div');
+      item.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;background:#fff;';
+      const info = document.createElement('span');
+      info.textContent = `ID: ${member.id} — ${member.name} ${member.surname} (${member.email})`;
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'danger';
+      removeBtn.style.cssText = 'padding:6px 12px;flex-shrink:0;';
+      removeBtn.textContent = 'Удалить';
+      removeBtn.addEventListener('click', () => removeParticipant(currentProjectId, member.id));
+      item.appendChild(info);
+      item.appendChild(removeBtn);
+      return item;
+    };
+
+    const loadParticipants = async (projectId) => {
+      const list = document.getElementById('participants-list');
+      list.innerHTML = '<span class="placeholder">Загрузка участников...</span>';
+      try {
+        const data = await apiRequest(`/admin/api/project-members-details?project_id=${projectId}`, 'GET');
+        list.innerHTML = '';
+        const members = data.members || [];
+        if (members.length === 0) {
+          list.innerHTML = '<span class="placeholder">Нет участников.</span>';
+        } else {
+          members.forEach(m => list.appendChild(renderParticipantItem(m)));
+        }
+      } catch (error) {
+        list.innerHTML = `<span style="color:#991b1b;">Не удалось загрузить участников: ${error.message}</span>`;
+      }
+    };
+
+    const removeParticipant = async (projectId, memberId) => {
+      clearMessage();
+      try {
+        await apiRequest(`/admin/api/project-members/remove?project_id=${projectId}`, 'DELETE', { member_id: memberId });
+        showMessage('Участник удалён.', false);
+        loadParticipants(projectId);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    };
+
+    document.getElementById('add-participant-button').addEventListener('click', async () => {
+      clearMessage();
+      const email = document.getElementById('new-participant-email').value.trim();
+      if (!email) {
+        showMessage('Введите email участника.', true);
+        return;
+      }
+      try {
+        await apiRequest(`/admin/api/project-members/add?project_id=${currentProjectId}`, 'POST', { email });
+        document.getElementById('new-participant-email').value = '';
+        showMessage('Участник добавлен.', false);
+        loadParticipants(currentProjectId);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    });
+
     document.getElementById('clear-button').addEventListener('click', () => {
       clearMessage();
       currentEntity = null;
+      currentProjectId = null;
       document.getElementById('workspace-title').textContent = 'Выберите сущность';
       document.getElementById('workspace-description').textContent = 'Нажмите одну из кнопок выше, затем введите параметры поиска. Когда сущность будет найдена, здесь появится форма для просмотра, редактирования и удаления.';
       document.getElementById('search-fields').innerHTML = '';
       document.getElementById('editor-fields').innerHTML = '';
       document.getElementById('search-form').classList.add('hidden');
       document.getElementById('editor-form').classList.add('hidden');
+      document.getElementById('participants-panel').classList.add('hidden');
+      document.getElementById('participants-list').innerHTML = '';
+    });
+
+    document.getElementById('dashboard-button').addEventListener('click', () => {
+      const url = new URL(window.location.href);
+      url.port = '8081';
+      url.pathname = '/';
+      url.search = '';
+      url.hash = '';
+      window.location.href = url.toString();
     });
 
     document.getElementById('logout-button').addEventListener('click', () => {

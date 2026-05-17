@@ -28,6 +28,7 @@ const (
 	ProjectService_GetProjectMembersDetails_FullMethodName = "/projectsvcv1.ProjectService/GetProjectMembersDetails"
 	ProjectService_AddProjectMember_FullMethodName         = "/projectsvcv1.ProjectService/AddProjectMember"
 	ProjectService_TransferProjectManager_FullMethodName   = "/projectsvcv1.ProjectService/TransferProjectManager"
+	ProjectService_DeleteProject_FullMethodName            = "/projectsvcv1.ProjectService/DeleteProject"
 	ProjectService_IsUserManager_FullMethodName            = "/projectsvcv1.ProjectService/IsUserManager"
 	ProjectService_GetUserProjects_FullMethodName          = "/projectsvcv1.ProjectService/GetUserProjects"
 	ProjectService_CreateTask_FullMethodName               = "/projectsvcv1.ProjectService/CreateTask"
@@ -52,6 +53,8 @@ const (
 	ProjectService_AdminGetComment_FullMethodName          = "/projectsvcv1.ProjectService/AdminGetComment"
 	ProjectService_AdminUpdateComment_FullMethodName       = "/projectsvcv1.ProjectService/AdminUpdateComment"
 	ProjectService_AdminDeleteComment_FullMethodName       = "/projectsvcv1.ProjectService/AdminDeleteComment"
+	ProjectService_RemoveProjectMember_FullMethodName      = "/projectsvcv1.ProjectService/RemoveProjectMember"
+	ProjectService_LeaveProject_FullMethodName             = "/projectsvcv1.ProjectService/LeaveProject"
 )
 
 // ProjectServiceClient is the client API for ProjectService service.
@@ -71,6 +74,7 @@ type ProjectServiceClient interface {
 	GetProjectMembersDetails(ctx context.Context, in *ProjectIdRequest, opts ...grpc.CallOption) (*projectv1.ProjectMembersResponse, error)
 	AddProjectMember(ctx context.Context, in *AddMemberRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error)
 	TransferProjectManager(ctx context.Context, in *TransferManagerRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error)
+	DeleteProject(ctx context.Context, in *ProjectIdRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error)
 	IsUserManager(ctx context.Context, in *IsManagerRequest, opts ...grpc.CallOption) (*projectv1.IsUserManagerResponse, error)
 	GetUserProjects(ctx context.Context, in *UserProjectsRequest, opts ...grpc.CallOption) (*projectv1.DashboardResponse, error)
 	// --- Tasks ---
@@ -98,6 +102,9 @@ type ProjectServiceClient interface {
 	AdminGetComment(ctx context.Context, in *projectv1.GetCommentRequest, opts ...grpc.CallOption) (*projectv1.Comment, error)
 	AdminUpdateComment(ctx context.Context, in *projectv1.UpdateCommentRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error)
 	AdminDeleteComment(ctx context.Context, in *projectv1.DeleteCommentRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error)
+	// --- Members ---
+	RemoveProjectMember(ctx context.Context, in *TransferManagerRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error)
+	LeaveProject(ctx context.Context, in *ProjectIdRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error)
 }
 
 type projectServiceClient struct {
@@ -182,6 +189,16 @@ func (c *projectServiceClient) TransferProjectManager(ctx context.Context, in *T
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(projectv1.OperationResponse)
 	err := c.cc.Invoke(ctx, ProjectService_TransferProjectManager_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *projectServiceClient) DeleteProject(ctx context.Context, in *ProjectIdRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(projectv1.OperationResponse)
+	err := c.cc.Invoke(ctx, ProjectService_DeleteProject_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -428,6 +445,26 @@ func (c *projectServiceClient) AdminDeleteComment(ctx context.Context, in *proje
 	return out, nil
 }
 
+func (c *projectServiceClient) RemoveProjectMember(ctx context.Context, in *TransferManagerRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(projectv1.OperationResponse)
+	err := c.cc.Invoke(ctx, ProjectService_RemoveProjectMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *projectServiceClient) LeaveProject(ctx context.Context, in *ProjectIdRequest, opts ...grpc.CallOption) (*projectv1.OperationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(projectv1.OperationResponse)
+	err := c.cc.Invoke(ctx, ProjectService_LeaveProject_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProjectServiceServer is the server API for ProjectService service.
 // All implementations must embed UnimplementedProjectServiceServer
 // for forward compatibility.
@@ -445,6 +482,7 @@ type ProjectServiceServer interface {
 	GetProjectMembersDetails(context.Context, *ProjectIdRequest) (*projectv1.ProjectMembersResponse, error)
 	AddProjectMember(context.Context, *AddMemberRequest) (*projectv1.OperationResponse, error)
 	TransferProjectManager(context.Context, *TransferManagerRequest) (*projectv1.OperationResponse, error)
+	DeleteProject(context.Context, *ProjectIdRequest) (*projectv1.OperationResponse, error)
 	IsUserManager(context.Context, *IsManagerRequest) (*projectv1.IsUserManagerResponse, error)
 	GetUserProjects(context.Context, *UserProjectsRequest) (*projectv1.DashboardResponse, error)
 	// --- Tasks ---
@@ -472,6 +510,9 @@ type ProjectServiceServer interface {
 	AdminGetComment(context.Context, *projectv1.GetCommentRequest) (*projectv1.Comment, error)
 	AdminUpdateComment(context.Context, *projectv1.UpdateCommentRequest) (*projectv1.OperationResponse, error)
 	AdminDeleteComment(context.Context, *projectv1.DeleteCommentRequest) (*projectv1.OperationResponse, error)
+	// --- Members ---
+	RemoveProjectMember(context.Context, *TransferManagerRequest) (*projectv1.OperationResponse, error)
+	LeaveProject(context.Context, *ProjectIdRequest) (*projectv1.OperationResponse, error)
 	mustEmbedUnimplementedProjectServiceServer()
 }
 
@@ -505,6 +546,9 @@ func (UnimplementedProjectServiceServer) AddProjectMember(context.Context, *AddM
 }
 func (UnimplementedProjectServiceServer) TransferProjectManager(context.Context, *TransferManagerRequest) (*projectv1.OperationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TransferProjectManager not implemented")
+}
+func (UnimplementedProjectServiceServer) DeleteProject(context.Context, *ProjectIdRequest) (*projectv1.OperationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteProject not implemented")
 }
 func (UnimplementedProjectServiceServer) IsUserManager(context.Context, *IsManagerRequest) (*projectv1.IsUserManagerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method IsUserManager not implemented")
@@ -577,6 +621,12 @@ func (UnimplementedProjectServiceServer) AdminUpdateComment(context.Context, *pr
 }
 func (UnimplementedProjectServiceServer) AdminDeleteComment(context.Context, *projectv1.DeleteCommentRequest) (*projectv1.OperationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AdminDeleteComment not implemented")
+}
+func (UnimplementedProjectServiceServer) RemoveProjectMember(context.Context, *TransferManagerRequest) (*projectv1.OperationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveProjectMember not implemented")
+}
+func (UnimplementedProjectServiceServer) LeaveProject(context.Context, *ProjectIdRequest) (*projectv1.OperationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LeaveProject not implemented")
 }
 func (UnimplementedProjectServiceServer) mustEmbedUnimplementedProjectServiceServer() {}
 func (UnimplementedProjectServiceServer) testEmbeddedByValue()                        {}
@@ -739,6 +789,24 @@ func _ProjectService_TransferProjectManager_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProjectServiceServer).TransferProjectManager(ctx, req.(*TransferManagerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProjectService_DeleteProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProjectIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectServiceServer).DeleteProject(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProjectService_DeleteProject_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectServiceServer).DeleteProject(ctx, req.(*ProjectIdRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1175,6 +1243,42 @@ func _ProjectService_AdminDeleteComment_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProjectService_RemoveProjectMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TransferManagerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectServiceServer).RemoveProjectMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProjectService_RemoveProjectMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectServiceServer).RemoveProjectMember(ctx, req.(*TransferManagerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProjectService_LeaveProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProjectIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectServiceServer).LeaveProject(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProjectService_LeaveProject_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectServiceServer).LeaveProject(ctx, req.(*ProjectIdRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProjectService_ServiceDesc is the grpc.ServiceDesc for ProjectService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1213,6 +1317,10 @@ var ProjectService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TransferProjectManager",
 			Handler:    _ProjectService_TransferProjectManager_Handler,
+		},
+		{
+			MethodName: "DeleteProject",
+			Handler:    _ProjectService_DeleteProject_Handler,
 		},
 		{
 			MethodName: "IsUserManager",
@@ -1309,6 +1417,14 @@ var ProjectService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AdminDeleteComment",
 			Handler:    _ProjectService_AdminDeleteComment_Handler,
+		},
+		{
+			MethodName: "RemoveProjectMember",
+			Handler:    _ProjectService_RemoveProjectMember_Handler,
+		},
+		{
+			MethodName: "LeaveProject",
+			Handler:    _ProjectService_LeaveProject_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
