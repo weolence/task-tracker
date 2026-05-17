@@ -122,6 +122,118 @@ func InitSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	CREATE INDEX IF NOT EXISTS project_user_roles_user_id_idx    ON project_user_roles(user_id);
 	CREATE INDEX IF NOT EXISTS project_user_roles_role_idx       ON project_user_roles(role);
 	CREATE INDEX IF NOT EXISTS tasks_status_id_idx               ON tasks(status_id);
+
+	DO $role$
+	BEGIN
+	    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_member') THEN
+	        CREATE ROLE app_member;
+	    END IF;
+	    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_manager') THEN
+	        CREATE ROLE app_manager;
+	    END IF;
+	    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_admin') THEN
+	        CREATE ROLE app_admin;
+	    END IF;
+	END $role$;
+
+	CREATE OR REPLACE VIEW view_member_tasks AS
+	SELECT
+	    t.id, t.project_id, t.assignee_id, t.name, t.description,
+	    tc_diff.name AS difficulty,
+	    tc_prio.name AS priority,
+	    ts.name      AS status,
+	    t.start_date, t.end_date
+	FROM tasks t
+	JOIN task_statuses ts    ON ts.id = t.status_id
+	LEFT JOIN task_categories tc_diff ON tc_diff.id = t.difficulty_category_id
+	LEFT JOIN task_categories tc_prio ON tc_prio.id = t.priority_category_id
+	WHERE ts.name != 'Closed';
+
+	CREATE OR REPLACE VIEW view_project_summary AS
+	SELECT
+	    p.id, p.name, p.description, p.status, p.start_date, p.end_date,
+	    pur.user_id                                    AS manager_id,
+	    COUNT(t.id)                                    AS total_tasks,
+	    COUNT(CASE WHEN ts.name = 'Closed' THEN 1 END) AS closed_tasks
+	FROM projects p
+	LEFT JOIN project_user_roles pur ON pur.project_id = p.id AND pur.role = 'manager'
+	LEFT JOIN tasks t                ON t.project_id   = p.id
+	LEFT JOIN task_statuses ts       ON ts.id          = t.status_id
+	GROUP BY p.id, p.name, p.description, p.status, p.start_date, p.end_date, pur.user_id;
+
+	CREATE OR REPLACE VIEW view_admin_tasks AS
+	SELECT
+	    t.id, t.project_id, p.name AS project_name,
+	    t.assignee_id, t.name, t.description,
+	    tc_diff.name AS difficulty,
+	    tc_prio.name AS priority,
+	    ts.name      AS status,
+	    t.start_date, t.end_date
+	FROM tasks t
+	JOIN projects p           ON p.id  = t.project_id
+	JOIN task_statuses ts     ON ts.id = t.status_id
+	LEFT JOIN task_categories tc_diff ON tc_diff.id = t.difficulty_category_id
+	LEFT JOIN task_categories tc_prio ON tc_prio.id = t.priority_category_id;
+
+	GRANT SELECT ON view_member_tasks, view_project_summary,
+	    projects, project_user_roles, task_statuses, task_categories TO app_member;
+	GRANT SELECT, INSERT, UPDATE, DELETE ON comments TO app_member;
+	GRANT UPDATE (status_id) ON tasks TO app_member;
+
+	GRANT SELECT ON view_member_tasks, view_project_summary,
+	    projects, project_user_roles, task_statuses, task_categories TO app_manager;
+	GRANT SELECT, INSERT, UPDATE, DELETE ON comments           TO app_manager;
+	GRANT SELECT, INSERT, UPDATE, DELETE ON tasks              TO app_manager;
+	GRANT SELECT, INSERT, UPDATE, DELETE ON project_user_roles TO app_manager;
+
+	GRANT SELECT ON view_member_tasks, view_project_summary, view_admin_tasks TO app_admin;
+	GRANT SELECT, INSERT, UPDATE, DELETE ON
+	    projects, tasks, comments, project_user_roles, task_statuses, task_categories TO app_admin;
+
+	CREATE OR REPLACE FUNCTION close_task(p_task_id INT)
+	RETURNS VOID LANGUAGE plpgsql AS $$
+	DECLARE
+	    v_current_status_id INT;
+	    v_review_status_id  INT;
+	    v_closed_status_id  INT;
+	BEGIN
+	    SELECT id INTO v_review_status_id FROM task_statuses WHERE name = 'On Review';
+	    SELECT id INTO v_closed_status_id FROM task_statuses WHERE name = 'Closed';
+	    SELECT status_id INTO v_current_status_id FROM tasks WHERE id = p_task_id;
+	    IF v_current_status_id IS NULL THEN
+	        RAISE EXCEPTION 'Task % not found', p_task_id;
+	    END IF;
+	    IF v_current_status_id != v_review_status_id THEN
+	        RAISE EXCEPTION 'Task % must be in On Review status to be closed', p_task_id;
+	    END IF;
+	    UPDATE tasks SET status_id = v_closed_status_id, end_date = NOW() WHERE id = p_task_id;
+	END;
+	$$;
+
+	CREATE OR REPLACE FUNCTION fn_task_status_dates()
+	RETURNS TRIGGER LANGUAGE plpgsql AS $$
+	BEGIN
+	    IF NEW.status_id IS DISTINCT FROM OLD.status_id THEN
+	        IF NEW.status_id = (SELECT id FROM task_statuses WHERE name = 'In Work')
+	           AND NEW.start_date IS NULL THEN
+	            NEW.start_date := NOW();
+	        END IF;
+	        IF NEW.status_id = (SELECT id FROM task_statuses WHERE name = 'Closed') THEN
+	            NEW.end_date := NOW();
+	        END IF;
+	        IF NEW.status_id = (SELECT id FROM task_statuses WHERE name = 'Not Started') THEN
+	            NEW.end_date := NULL;
+	        END IF;
+	    END IF;
+	    RETURN NEW;
+	END;
+	$$;
+
+	DROP TRIGGER IF EXISTS trg_task_status_dates ON tasks;
+	CREATE TRIGGER trg_task_status_dates
+	    BEFORE UPDATE ON tasks
+	    FOR EACH ROW
+	    EXECUTE FUNCTION fn_task_status_dates();
 	`)
 	return err
 }

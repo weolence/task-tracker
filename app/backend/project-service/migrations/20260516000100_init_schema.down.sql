@@ -1,6 +1,15 @@
+DROP TRIGGER IF EXISTS trg_task_status_dates ON tasks;
+DROP FUNCTION IF EXISTS fn_task_status_dates();
+DROP FUNCTION IF EXISTS close_task(INT);
+DROP VIEW IF EXISTS view_admin_tasks;
+DROP VIEW IF EXISTS view_project_summary;
+DROP VIEW IF EXISTS view_member_tasks;
 DROP TABLE IF EXISTS comments;
 DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS task_statuses;
 DROP TABLE IF EXISTS task_categories;
 DROP TABLE IF EXISTS project_user_roles;
 DROP TABLE IF EXISTS projects;
+DROP ROLE IF EXISTS app_admin;
+DROP ROLE IF EXISTS app_manager;
+DROP ROLE IF EXISTS app_member;

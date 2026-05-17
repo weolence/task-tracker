@@ -179,6 +179,9 @@ func run() error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))))
+	mux.Handle("/api/admin/project-members-details", authMW(httpadapter.AdminOnly(http.HandlerFunc(adminHandler.GetProjectMembers))))
+	mux.Handle("/api/admin/project-members/add", authMW(httpadapter.AdminOnly(http.HandlerFunc(adminHandler.AddProjectMember))))
+	mux.Handle("/api/admin/project-members/remove", authMW(httpadapter.AdminOnly(http.HandlerFunc(adminHandler.RemoveProjectMember))))
 	mux.HandleFunc("/project/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/project/" || !strings.HasPrefix(r.URL.Path, "/project/") {
 			http.NotFound(w, r)

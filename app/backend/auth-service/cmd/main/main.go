@@ -122,13 +122,13 @@ func run() error {
 		adminHandler.ProxyTask(w, r, "/api/admin/tasks")
 	}))))
 	mux.Handle("/admin/api/project-members-details", adminAuth(httpadapter.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		adminHandler.ProxyMembers(w, r, "/api/project-members-details")
+		adminHandler.ProxyMembers(w, r, "/api/admin/project-members-details")
 	}))))
 	mux.Handle("/admin/api/project-members/add", adminAuth(httpadapter.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		adminHandler.ProxyMembers(w, r, "/api/project-members/add")
+		adminHandler.ProxyMembers(w, r, "/api/admin/project-members/add")
 	}))))
 	mux.Handle("/admin/api/project-members/remove", adminAuth(httpadapter.AdminOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		adminHandler.ProxyMembers(w, r, "/api/project-members/remove")
+		adminHandler.ProxyMembers(w, r, "/api/admin/project-members/remove")
 	}))))
 
 	server := &http.Server{

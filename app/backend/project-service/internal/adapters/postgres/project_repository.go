@@ -319,6 +319,12 @@ func (r *ProjectRepository) RemoveProjectMember(ctx context.Context, projectID i
 }
 
 func (r *ProjectRepository) UpdateProject(ctx context.Context, project domain.Project) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
 	var endDate any
 	if project.EndDate != nil && *project.EndDate != "" {
 		parsedEndDate, err := time.Parse("2006-01-02", *project.EndDate)
@@ -328,7 +334,7 @@ func (r *ProjectRepository) UpdateProject(ctx context.Context, project domain.Pr
 		endDate = parsedEndDate
 	}
 
-	query := `
+	cmdTag, err := tx.Exec(ctx, `
 		UPDATE projects
 		SET name = $1,
 			description = $2,
@@ -336,9 +342,7 @@ func (r *ProjectRepository) UpdateProject(ctx context.Context, project domain.Pr
 			start_date = $4,
 			end_date = $5
 		WHERE id = $6
-	`
-
-	cmdTag, err := r.pool.Exec(ctx, query,
+	`,
 		project.Name,
 		project.Description,
 		project.Status,
@@ -349,12 +353,31 @@ func (r *ProjectRepository) UpdateProject(ctx context.Context, project domain.Pr
 	if err != nil {
 		return err
 	}
-
 	if cmdTag.RowsAffected() == 0 {
 		return errors.New("project not found")
 	}
 
-	return nil
+	if project.ManagerID > 0 {
+		// Demote any existing manager who is not the intended new manager
+		if _, err = tx.Exec(ctx, `
+			UPDATE project_user_roles
+			SET role = 'member'
+			WHERE project_id = $1 AND role = 'manager' AND user_id != $2
+		`, project.ID, project.ManagerID); err != nil {
+			return err
+		}
+
+		// Insert new manager or promote existing member
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO project_user_roles (project_id, user_id, role)
+			VALUES ($1, $2, 'manager')
+			ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'manager'
+		`, project.ID, project.ManagerID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (r *ProjectRepository) DeleteProject(ctx context.Context, projectID int32) error {

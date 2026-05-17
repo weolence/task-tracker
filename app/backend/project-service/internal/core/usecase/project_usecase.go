@@ -453,6 +453,99 @@ func (uc *ProjectUseCase) DeleteProjectForAdmin(ctx context.Context, projectID i
 	return uc.projectRepo.DeleteProject(ctx, projectID)
 }
 
+func (uc *ProjectUseCase) GetProjectMembersWithDetailsForAdmin(ctx context.Context, projectID int) (projectv1.ProjectMembersResponse, error) {
+	memberIDs, err := uc.projectRepo.GetProjectMembers(ctx, projectID)
+	if err != nil {
+		return projectv1.ProjectMembersResponse{}, err
+	}
+
+	seen := make(map[int32]bool)
+	members := make([]*userv1.User, 0, len(memberIDs))
+	for _, memberID := range memberIDs {
+		if seen[memberID] {
+			continue
+		}
+		seen[memberID] = true
+		user, err := uc.fetchUserFromAuthService(memberID)
+		if err != nil {
+			continue
+		}
+		members = append(members, &userv1.User{
+			Id:      int32(user.ID),
+			Email:   user.Email,
+			Name:    user.Name,
+			Surname: user.Surname,
+		})
+	}
+
+	return projectv1.ProjectMembersResponse{Members: members}, nil
+}
+
+func (uc *ProjectUseCase) AddProjectMemberForAdmin(ctx context.Context, projectID int, email string) (*userv1.User, error) {
+	if email == "" {
+		return nil, errors.New("email is required")
+	}
+
+	project, err := uc.projectRepo.GetProjectByID(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, errors.New("project not found")
+	}
+
+	user, err := uc.fetchUserFromAuthServiceByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	if int32(user.ID) == project.ManagerID {
+		return nil, errors.New("this user is the project manager and is already a member")
+	}
+
+	if err := uc.projectRepo.AddProjectMember(ctx, projectID, int32(user.ID)); err != nil {
+		return nil, err
+	}
+
+	return &userv1.User{
+		Id:      int32(user.ID),
+		Email:   user.Email,
+		Name:    user.Name,
+		Surname: user.Surname,
+		Role:    user.Role,
+	}, nil
+}
+
+func (uc *ProjectUseCase) RemoveProjectMemberForAdmin(ctx context.Context, projectID int, targetID int32) error {
+	if targetID == 0 {
+		return errors.New("member_id is required")
+	}
+
+	project, err := uc.projectRepo.GetProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if project == nil {
+		return errors.New("project not found")
+	}
+	if project.ManagerID == targetID {
+		return errors.New("cannot remove the project manager")
+	}
+
+	isMember, err := uc.projectRepo.IsUserMemberOfProject(ctx, targetID, projectID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return errors.New("user is not a project member")
+	}
+
+	if err := uc.taskRepo.UnassignTasksByMemberAndProject(ctx, projectID, targetID); err != nil {
+		return err
+	}
+
+	return uc.projectRepo.RemoveProjectMember(ctx, projectID, targetID)
+}
+
 func (uc *ProjectUseCase) fetchUserFromAuthService(userID int32) (domain.User, error) {
 	req := &userv1.GetUserRequest{UserId: &userID}
 	return uc.fetchUserByRequest(req)
