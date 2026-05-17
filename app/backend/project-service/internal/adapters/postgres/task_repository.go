@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"project-service/internal/core/domain"
@@ -19,9 +20,143 @@ func NewTaskRepository(pool *pgxpool.Pool) *TaskRepository {
 	return &TaskRepository{pool: pool}
 }
 
+func (r *TaskRepository) categoryID(ctx context.Context, categoryType string, name string) (int, error) {
+	var id int
+	err := r.pool.QueryRow(ctx, `
+		SELECT id FROM task_categories
+		WHERE category_type = $1 AND name = $2
+		LIMIT 1
+	`, categoryType, name).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return id, nil
+}
+
+func (r *TaskRepository) statusID(ctx context.Context, status domain.TaskStatus) (int, error) {
+	var id int
+	err := r.pool.QueryRow(ctx, `
+		SELECT id FROM task_statuses
+		WHERE name = $1
+		LIMIT 1
+	`, statusNameForTaskStatus(status)).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return id, nil
+}
+
+func statusNameForTaskStatus(s domain.TaskStatus) string {
+	switch s {
+	case domain.TaskStatusNotStarted:
+		return "Not Started"
+	case domain.TaskStatusInWork:
+		return "In Work"
+	case domain.TaskStatusOnReview:
+		return "On Review"
+	case domain.TaskStatusClosed:
+		return "Closed"
+	default:
+		return "Not Started"
+	}
+}
+
+func taskStatusFromName(name string) domain.TaskStatus {
+	switch strings.ToLower(name) {
+	case "not started":
+		return domain.TaskStatusNotStarted
+	case "in work":
+		return domain.TaskStatusInWork
+	case "on review":
+		return domain.TaskStatusOnReview
+	case "closed":
+		return domain.TaskStatusClosed
+	default:
+		return domain.TaskStatusNotStarted
+	}
+}
+
+func categoryNameForDifficulty(d domain.TaskDifficulty) string {
+	switch d {
+	case domain.TaskDifficultyEasy:
+		return "Easy"
+	case domain.TaskDifficultyMedium:
+		return "Medium"
+	case domain.TaskDifficultyHard:
+		return "Hard"
+	default:
+		return "Medium"
+	}
+}
+
+func categoryNameForPriority(p domain.TaskPriority) string {
+	switch p {
+	case domain.TaskPriorityLow:
+		return "Low"
+	case domain.TaskPriorityMedium:
+		return "Medium"
+	case domain.TaskPriorityHigh:
+		return "High"
+	default:
+		return "Medium"
+	}
+}
+
+func difficultyFromCategory(name string) domain.TaskDifficulty {
+	switch strings.ToLower(name) {
+	case "easy":
+		return domain.TaskDifficultyEasy
+	case "medium":
+		return domain.TaskDifficultyMedium
+	case "hard":
+		return domain.TaskDifficultyHard
+	default:
+		return domain.TaskDifficultyMedium
+	}
+}
+
+func priorityFromCategory(name string) domain.TaskPriority {
+	switch strings.ToLower(name) {
+	case "low":
+		return domain.TaskPriorityLow
+	case "medium":
+		return domain.TaskPriorityMedium
+	case "high":
+		return domain.TaskPriorityHigh
+	default:
+		return domain.TaskPriorityMedium
+	}
+}
+
+func ptrValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 func (r *TaskRepository) CreateTask(ctx context.Context, task domain.Task) error {
+	difficultyID, err := r.categoryID(ctx, "difficulty", categoryNameForDifficulty(task.Difficulty))
+	if err != nil {
+		return err
+	}
+	priorityID, err := r.categoryID(ctx, "priority", categoryNameForPriority(task.Priority))
+	if err != nil {
+		return err
+	}
+	statusID, err := r.statusID(ctx, task.Status)
+	if err != nil {
+		return err
+	}
+
 	query := `
-		INSERT INTO tasks (project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date)
+		INSERT INTO tasks (project_id, assignee_id, name, description, difficulty_category_id, priority_category_id, status_id, start_date, end_date)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`
@@ -31,9 +166,9 @@ func (r *TaskRepository) CreateTask(ctx context.Context, task domain.Task) error
 		task.AssigneeID,
 		task.Name,
 		task.Description,
-		task.Priority,
-		task.Difficulty,
-		task.Status,
+		difficultyID,
+		priorityID,
+		statusID,
 		task.StartDate,
 		task.EndDate,
 	).Scan(&task.ID)
@@ -54,15 +189,22 @@ func (r *TaskRepository) DeleteTask(ctx context.Context, taskID int) error {
 
 func (r *TaskRepository) GetTaskByID(ctx context.Context, taskID int) (*domain.Task, error) {
 	query := `
-		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
-		FROM tasks
-		WHERE id = $1
+		SELECT t.id, t.project_id, t.assignee_id, t.name, t.description, ts.name AS status_name, t.start_date, t.end_date,
+		       pc.name AS priority_name, dc.name AS difficulty_name
+		FROM tasks t
+		JOIN task_statuses ts ON t.status_id = ts.id
+		LEFT JOIN task_categories pc ON t.priority_category_id = pc.id
+		LEFT JOIN task_categories dc ON t.difficulty_category_id = dc.id
+		WHERE t.id = $1
 	`
 
 	var task domain.Task
 	var startDate *time.Time
 	var endDate *time.Time
 	var assigneeID *int32
+	var statusName string
+	var priorityName *string
+	var difficultyName *string
 
 	err := r.pool.QueryRow(ctx, query, taskID).Scan(
 		&task.ID,
@@ -70,11 +212,11 @@ func (r *TaskRepository) GetTaskByID(ctx context.Context, taskID int) (*domain.T
 		&assigneeID,
 		&task.Name,
 		&task.Description,
-		&task.Priority,
-		&task.Difficulty,
-		&task.Status,
+		&statusName,
 		&startDate,
 		&endDate,
+		&priorityName,
+		&difficultyName,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -88,19 +230,32 @@ func (r *TaskRepository) GetTaskByID(ctx context.Context, taskID int) (*domain.T
 	if endDate != nil {
 		task.EndDate = endDate
 	}
+	task.Status = taskStatusFromName(statusName)
+	task.Priority = priorityFromCategory(ptrValue(priorityName))
+	task.Difficulty = difficultyFromCategory(ptrValue(difficultyName))
 
 	return &task, nil
 }
 
 func (r *TaskRepository) GetTasksByProjectAndAssignee(ctx context.Context, projectID int, assigneeID int) ([]domain.Task, error) {
+	closedID, err := r.statusID(ctx, domain.TaskStatusClosed)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
-		FROM tasks
-		WHERE project_id = $1 AND assignee_id = $2 AND status != $3
-		ORDER BY priority DESC, difficulty DESC
+		SELECT t.id, t.project_id, t.assignee_id, t.name, t.description, ts.name AS status_name, t.start_date, t.end_date,
+		       pc.name AS priority_name, dc.name AS difficulty_name
+		FROM tasks t
+		JOIN task_statuses ts ON t.status_id = ts.id
+		LEFT JOIN task_categories pc ON t.priority_category_id = pc.id
+		LEFT JOIN task_categories dc ON t.difficulty_category_id = dc.id
+		WHERE t.project_id = $1 AND t.assignee_id = $2 AND t.status_id != $3
+		ORDER BY CASE pc.name WHEN 'High' THEN 3 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 1 ELSE 2 END DESC,
+		         CASE dc.name WHEN 'Hard' THEN 3 WHEN 'Medium' THEN 2 WHEN 'Easy' THEN 1 ELSE 2 END DESC
 	`
 
-	rows, err := r.pool.Query(ctx, query, projectID, assigneeID, domain.TaskStatusClosed)
+	rows, err := r.pool.Query(ctx, query, projectID, assigneeID, closedID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,14 +265,24 @@ func (r *TaskRepository) GetTasksByProjectAndAssignee(ctx context.Context, proje
 }
 
 func (r *TaskRepository) GetAllTasksByProject(ctx context.Context, projectID int) ([]domain.Task, error) {
+	closedID, err := r.statusID(ctx, domain.TaskStatusClosed)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
-		FROM tasks
-		WHERE project_id = $1 AND status != $2
-		ORDER BY priority DESC, difficulty DESC
+		SELECT t.id, t.project_id, t.assignee_id, t.name, t.description, ts.name AS status_name, t.start_date, t.end_date,
+		       pc.name AS priority_name, dc.name AS difficulty_name
+		FROM tasks t
+		JOIN task_statuses ts ON t.status_id = ts.id
+		LEFT JOIN task_categories pc ON t.priority_category_id = pc.id
+		LEFT JOIN task_categories dc ON t.difficulty_category_id = dc.id
+		WHERE t.project_id = $1 AND t.status_id != $2
+		ORDER BY CASE pc.name WHEN 'High' THEN 3 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 1 ELSE 2 END DESC,
+		         CASE dc.name WHEN 'Hard' THEN 3 WHEN 'Medium' THEN 2 WHEN 'Easy' THEN 1 ELSE 2 END DESC
 	`
 
-	rows, err := r.pool.Query(ctx, query, projectID, domain.TaskStatusClosed)
+	rows, err := r.pool.Query(ctx, query, projectID, closedID)
 	if err != nil {
 		return nil, err
 	}
@@ -127,14 +292,25 @@ func (r *TaskRepository) GetAllTasksByProject(ctx context.Context, projectID int
 }
 
 func (r *TaskRepository) GetClosedTasksByProject(ctx context.Context, projectID int) ([]domain.Task, error) {
+	closedID, err := r.statusID(ctx, domain.TaskStatusClosed)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `
-		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
-		FROM tasks
-		WHERE project_id = $1 AND status = $2
-		ORDER BY end_date DESC, priority DESC, difficulty DESC
+		SELECT t.id, t.project_id, t.assignee_id, t.name, t.description, ts.name AS status_name, t.start_date, t.end_date,
+		       pc.name AS priority_name, dc.name AS difficulty_name
+		FROM tasks t
+		JOIN task_statuses ts ON t.status_id = ts.id
+		LEFT JOIN task_categories pc ON t.priority_category_id = pc.id
+		LEFT JOIN task_categories dc ON t.difficulty_category_id = dc.id
+		WHERE t.project_id = $1 AND t.status_id = $2
+		ORDER BY t.end_date DESC,
+		         CASE pc.name WHEN 'High' THEN 3 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 1 ELSE 2 END DESC,
+		         CASE dc.name WHEN 'Hard' THEN 3 WHEN 'Medium' THEN 2 WHEN 'Easy' THEN 1 ELSE 2 END DESC
 	`
 
-	rows, err := r.pool.Query(ctx, query, projectID, domain.TaskStatusClosed)
+	rows, err := r.pool.Query(ctx, query, projectID, closedID)
 	if err != nil {
 		return nil, err
 	}
@@ -145,10 +321,14 @@ func (r *TaskRepository) GetClosedTasksByProject(ctx context.Context, projectID 
 
 func (r *TaskRepository) GetTaskByProjectAndName(ctx context.Context, projectID int32, name string) (*domain.Task, error) {
 	query := `
-		SELECT id, project_id, assignee_id, name, description, priority, difficulty, status, start_date, end_date
-		FROM tasks
-		WHERE project_id = $1 AND name = $2
-		ORDER BY id
+		SELECT t.id, t.project_id, t.assignee_id, t.name, t.description, ts.name AS status_name, t.start_date, t.end_date,
+		       pc.name AS priority_name, dc.name AS difficulty_name
+		FROM tasks t
+		JOIN task_statuses ts ON t.status_id = ts.id
+		LEFT JOIN task_categories pc ON t.priority_category_id = pc.id
+		LEFT JOIN task_categories dc ON t.difficulty_category_id = dc.id
+		WHERE t.project_id = $1 AND t.name = $2
+		ORDER BY t.id
 		LIMIT 1
 	`
 
@@ -156,6 +336,9 @@ func (r *TaskRepository) GetTaskByProjectAndName(ctx context.Context, projectID 
 	var startDate *time.Time
 	var endDate *time.Time
 	var assigneeID *int32
+	var statusName string
+	var priorityName *string
+	var difficultyName *string
 
 	err := r.pool.QueryRow(ctx, query, projectID, name).Scan(
 		&task.ID,
@@ -163,11 +346,11 @@ func (r *TaskRepository) GetTaskByProjectAndName(ctx context.Context, projectID 
 		&assigneeID,
 		&task.Name,
 		&task.Description,
-		&task.Priority,
-		&task.Difficulty,
-		&task.Status,
+		&statusName,
 		&startDate,
 		&endDate,
+		&priorityName,
+		&difficultyName,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -179,21 +362,33 @@ func (r *TaskRepository) GetTaskByProjectAndName(ctx context.Context, projectID 
 	task.AssigneeID = assigneeID
 	task.StartDate = startDate
 	task.EndDate = endDate
+	task.Status = taskStatusFromName(statusName)
+	task.Priority = priorityFromCategory(ptrValue(priorityName))
+	task.Difficulty = difficultyFromCategory(ptrValue(difficultyName))
 
 	return &task, nil
 }
 
 func (r *TaskRepository) AssignTask(ctx context.Context, taskID int, assigneeID int) error {
+	notStartedID, err := r.statusID(ctx, domain.TaskStatusNotStarted)
+	if err != nil {
+		return err
+	}
+	closedID, err := r.statusID(ctx, domain.TaskStatusClosed)
+	if err != nil {
+		return err
+	}
+
 	query := `
 		UPDATE tasks
 		SET assignee_id = $1,
-			status = $2,
+			status_id = $2,
 			start_date = NULL,
 			end_date = NULL
-		WHERE id = $3 AND status != $4
+		WHERE id = $3 AND status_id != $4
 	`
 
-	cmdTag, err := r.pool.Exec(ctx, query, assigneeID, domain.TaskStatusNotStarted, taskID, domain.TaskStatusClosed)
+	cmdTag, err := r.pool.Exec(ctx, query, assigneeID, notStartedID, taskID, closedID)
 	if err != nil {
 		return err
 	}
@@ -206,16 +401,25 @@ func (r *TaskRepository) AssignTask(ctx context.Context, taskID int, assigneeID 
 }
 
 func (r *TaskRepository) UnassignTask(ctx context.Context, taskID int) error {
+	notStartedID, err := r.statusID(ctx, domain.TaskStatusNotStarted)
+	if err != nil {
+		return err
+	}
+	closedID, err := r.statusID(ctx, domain.TaskStatusClosed)
+	if err != nil {
+		return err
+	}
+
 	query := `
 		UPDATE tasks
 		SET assignee_id = NULL,
-			status = $1,
+			status_id = $1,
 			start_date = NULL,
 			end_date = NULL
-		WHERE id = $2 AND status != $3
+		WHERE id = $2 AND status_id != $3
 	`
 
-	cmdTag, err := r.pool.Exec(ctx, query, domain.TaskStatusNotStarted, taskID, domain.TaskStatusClosed)
+	cmdTag, err := r.pool.Exec(ctx, query, notStartedID, taskID, closedID)
 	if err != nil {
 		return err
 	}
@@ -228,22 +432,47 @@ func (r *TaskRepository) UnassignTask(ctx context.Context, taskID int) error {
 }
 
 func (r *TaskRepository) UpdateTaskStatus(ctx context.Context, taskID int, status domain.TaskStatus) error {
-	query := `
-		UPDATE tasks
-		SET status = $1,
-			start_date = CASE
-				WHEN $1 = 2 AND start_date IS NULL THEN now()
-				ELSE start_date
-			END,
-			end_date = CASE
-				WHEN $1 = 4 THEN now()
-				WHEN $1 = 1 THEN NULL
-				ELSE end_date
-			END
-		WHERE id = $2 AND status != $3
-	`
+	newStatusID, err := r.statusID(ctx, status)
+	if err != nil {
+		return err
+	}
+	closedID, err := r.statusID(ctx, domain.TaskStatusClosed)
+	if err != nil {
+		return err
+	}
 
-	cmdTag, err := r.pool.Exec(ctx, query, status, taskID, domain.TaskStatusClosed)
+	var query string
+	switch status {
+	case domain.TaskStatusInWork:
+		query = `
+			UPDATE tasks
+			SET status_id = $1,
+				start_date = CASE WHEN start_date IS NULL THEN now() ELSE start_date END
+			WHERE id = $2 AND status_id != $3
+		`
+	case domain.TaskStatusNotStarted:
+		query = `
+			UPDATE tasks
+			SET status_id = $1,
+				end_date = NULL
+			WHERE id = $2 AND status_id != $3
+		`
+	case domain.TaskStatusClosed:
+		query = `
+			UPDATE tasks
+			SET status_id = $1,
+				end_date = now()
+			WHERE id = $2 AND status_id != $3
+		`
+	default:
+		query = `
+			UPDATE tasks
+			SET status_id = $1
+			WHERE id = $2 AND status_id != $3
+		`
+	}
+
+	cmdTag, err := r.pool.Exec(ctx, query, newStatusID, taskID, closedID)
 	if err != nil {
 		return err
 	}
@@ -256,15 +485,28 @@ func (r *TaskRepository) UpdateTaskStatus(ctx context.Context, taskID int, statu
 }
 
 func (r *TaskRepository) UpdateTask(ctx context.Context, task domain.Task) error {
+	difficultyID, err := r.categoryID(ctx, "difficulty", categoryNameForDifficulty(task.Difficulty))
+	if err != nil {
+		return err
+	}
+	priorityID, err := r.categoryID(ctx, "priority", categoryNameForPriority(task.Priority))
+	if err != nil {
+		return err
+	}
+	statusID, err := r.statusID(ctx, task.Status)
+	if err != nil {
+		return err
+	}
+
 	query := `
 		UPDATE tasks
 		SET project_id = $1,
 			assignee_id = $2,
 			name = $3,
 			description = $4,
-			priority = $5,
-			difficulty = $6,
-			status = $7,
+			difficulty_category_id = $5,
+			priority_category_id = $6,
+			status_id = $7,
 			start_date = $8,
 			end_date = $9
 		WHERE id = $10
@@ -275,9 +517,9 @@ func (r *TaskRepository) UpdateTask(ctx context.Context, task domain.Task) error
 		task.AssigneeID,
 		task.Name,
 		task.Description,
-		task.Priority,
-		task.Difficulty,
-		task.Status,
+		difficultyID,
+		priorityID,
+		statusID,
 		task.StartDate,
 		task.EndDate,
 		task.ID,
@@ -294,14 +536,19 @@ func (r *TaskRepository) UpdateTask(ctx context.Context, task domain.Task) error
 }
 
 func (r *TaskRepository) CloseTask(ctx context.Context, taskID int) error {
+	closedID, err := r.statusID(ctx, domain.TaskStatusClosed)
+	if err != nil {
+		return err
+	}
+
 	query := `
 		UPDATE tasks
-		SET status = $2,
+		SET status_id = $2,
 			end_date = now()
-		WHERE id = $1 AND status != $3
+		WHERE id = $1 AND status_id != $3
 	`
 
-	cmdTag, err := r.pool.Exec(ctx, query, taskID, domain.TaskStatusClosed, domain.TaskStatusClosed)
+	cmdTag, err := r.pool.Exec(ctx, query, taskID, closedID, closedID)
 	if err != nil {
 		return err
 	}
@@ -314,14 +561,23 @@ func (r *TaskRepository) CloseTask(ctx context.Context, taskID int) error {
 }
 
 func (r *TaskRepository) UnassignTasksByMemberAndProject(ctx context.Context, projectID int, userID int32) error {
-	_, err := r.pool.Exec(ctx, `
+	notStartedID, err := r.statusID(ctx, domain.TaskStatusNotStarted)
+	if err != nil {
+		return err
+	}
+	closedID, err := r.statusID(ctx, domain.TaskStatusClosed)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.pool.Exec(ctx, `
 		UPDATE tasks
 		SET assignee_id = NULL,
-		    status = $1,
+		    status_id = $1,
 		    start_date = NULL,
 		    end_date = NULL
-		WHERE project_id = $2 AND assignee_id = $3 AND status != $4
-	`, domain.TaskStatusNotStarted, projectID, userID, domain.TaskStatusClosed)
+		WHERE project_id = $2 AND assignee_id = $3 AND status_id != $4
+	`, notStartedID, projectID, userID, closedID)
 	return err
 }
 
@@ -336,6 +592,9 @@ func scanTasks(rows interface {
 		var startDate *time.Time
 		var endDate *time.Time
 		var assigneeID *int32
+		var statusName string
+		var priorityName *string
+		var difficultyName *string
 
 		if err := rows.Scan(
 			&task.ID,
@@ -343,11 +602,11 @@ func scanTasks(rows interface {
 			&assigneeID,
 			&task.Name,
 			&task.Description,
-			&task.Priority,
-			&task.Difficulty,
-			&task.Status,
+			&statusName,
 			&startDate,
 			&endDate,
+			&priorityName,
+			&difficultyName,
 		); err != nil {
 			return nil, err
 		}
@@ -357,6 +616,9 @@ func scanTasks(rows interface {
 		if endDate != nil {
 			task.EndDate = endDate
 		}
+		task.Status = taskStatusFromName(statusName)
+		task.Priority = priorityFromCategory(ptrValue(priorityName))
+		task.Difficulty = difficultyFromCategory(ptrValue(difficultyName))
 
 		tasks = append(tasks, task)
 	}

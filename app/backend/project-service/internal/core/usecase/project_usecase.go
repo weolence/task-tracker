@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"time"
 
+	userv1 "auth-service/api/proto/userv1"
+	projectv1 "project-service/api/proto/projectv1"
 	"project-service/internal/core/domain"
 	"project-service/internal/core/ports"
-	projectv1 "project-service/api/proto/projectv1"
-	userv1 "auth-service/api/proto/userv1"
 
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -84,10 +84,6 @@ func (uc *ProjectUseCase) CreateProject(ctx context.Context, userID int32, proje
 
 	projectID, err := uc.projectRepo.CreateProject(ctx, project)
 	if err != nil {
-		return 0, err
-	}
-
-	if err := uc.projectRepo.AddProjectMember(ctx, projectID, userID); err != nil {
 		return 0, err
 	}
 
