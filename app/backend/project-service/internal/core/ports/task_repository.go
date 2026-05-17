@@ -7,7 +7,7 @@ import (
 )
 
 type TaskRepository interface {
-	CreateTask(ctx context.Context, task domain.Task) error
+	CreateTask(ctx context.Context, task domain.Task) (int32, error)
 	DeleteTask(ctx context.Context, taskID int) error
 	GetTaskByID(ctx context.Context, taskID int) (*domain.Task, error)
 	GetTasksByProjectAndAssignee(ctx context.Context, projectID int, assigneeID int) ([]domain.Task, error)

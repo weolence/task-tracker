@@ -419,7 +419,14 @@ func (uc *ProjectUseCase) UpdateProjectForAdmin(ctx context.Context, project *pr
 		return errors.New("project id is required")
 	}
 
-	startDate, err := time.Parse("2006-01-02", project.StartDate)
+	var startDate time.Time
+	var err error
+	for _, layout := range []string{"2006-01-02", time.RFC3339, time.RFC3339Nano} {
+		startDate, err = time.Parse(layout, project.StartDate)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return err
 	}

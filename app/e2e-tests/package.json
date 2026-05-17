@@ -1,0 +1,17 @@
+{
+  "name": "task-tracker-tests",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "seed": "node scripts/seed.js",
+    "cy:open": "cypress open",
+    "cy:run": "cypress run",
+    "test": "npm run seed && cypress run"
+  },
+  "devDependencies": {
+    "cypress": "^13.17.0"
+  },
+  "dependencies": {
+    "pg": "^8.13.3"
+  }
+}

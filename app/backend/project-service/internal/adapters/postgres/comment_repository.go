@@ -114,18 +114,12 @@ func (r *CommentRepository) GetCommentsByTaskID(ctx context.Context, taskID int)
 func (r *CommentRepository) UpdateComment(ctx context.Context, comment domain.Comment) error {
 	query := `
 		UPDATE comments
-		SET author_id = $1,
-			task_id = $2,
-			content = $3,
-			creation_date = $4
-		WHERE id = $5
+		SET content = $1
+		WHERE id = $2
 	`
 
 	cmdTag, err := r.pool.Exec(ctx, query,
-		comment.AuthorID,
-		comment.TaskID,
 		comment.Content,
-		comment.CreationDate,
 		comment.ID,
 	)
 	if err != nil {

@@ -27,7 +27,7 @@ func readProtoJSON(r *http.Request, msg proto.Message) error {
 func writeProtoJSON(w http.ResponseWriter, status int, msg proto.Message) {
 	data, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(msg)
 	if err != nil {
-		http.Error(w, "failed to marshal response", http.StatusInternalServerError)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 

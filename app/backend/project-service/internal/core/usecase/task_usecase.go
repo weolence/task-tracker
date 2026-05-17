@@ -49,7 +49,7 @@ func (uc *TaskUseCase) UpdateTaskStatus(ctx context.Context, taskID int, status 
 	return uc.taskRepo.UpdateTaskStatus(ctx, taskID, status)
 }
 
-func (uc *TaskUseCase) CreateTask(ctx context.Context, task domain.Task) error {
+func (uc *TaskUseCase) CreateTask(ctx context.Context, task domain.Task) (int32, error) {
 	return uc.taskRepo.CreateTask(ctx, task)
 }
 

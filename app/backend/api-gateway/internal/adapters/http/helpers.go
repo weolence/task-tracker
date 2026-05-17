@@ -22,7 +22,7 @@ func readJSON(r *http.Request, v any) error {
 }
 
 func writeProtoJSON(w http.ResponseWriter, code int, m proto.Message) {
-	b, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(m)
+	b, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(m)
 	if err != nil {
 		http.Error(w, "marshal error", http.StatusInternalServerError)
 		return

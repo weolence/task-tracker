@@ -225,10 +225,12 @@ func (s *ProjectServer) CreateTask(ctx context.Context, req *projectv1.CreateTas
 		Difficulty:  domain.TaskDifficulty(req.Difficulty),
 		Status:      domain.TaskStatusNotStarted,
 	}
-	if err := s.tasks.CreateTask(ctx, t); err != nil {
+	id, err := s.tasks.CreateTask(ctx, t)
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "create task: %v", err)
 	}
 	return &projectv1.Task{
+		Id:         id,
 		ProjectId:  req.ProjectId,
 		Name:       req.Name,
 		Priority:   req.Priority,

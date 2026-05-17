@@ -370,10 +370,10 @@ func (h *ProjectHandler) TasksRouter(w http.ResponseWriter, r *http.Request) {
 		h.assignTask(w, r, int32(taskID))
 	case "unassign":
 		h.unassignTask(w, r, int32(taskID))
-	case "comments", "comments/":
-		h.commentsRouter(w, r, int32(taskID), strings.TrimPrefix(action, "comments"))
 	default:
-		if r.Method == http.MethodDelete && action == "" {
+		if strings.HasPrefix(action, "comments") {
+			h.commentsRouter(w, r, int32(taskID), strings.TrimPrefix(action, "comments"))
+		} else if r.Method == http.MethodDelete && action == "" {
 			h.deleteTask(w, r, int32(taskID))
 		} else {
 			http.NotFound(w, r)

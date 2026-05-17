@@ -277,7 +277,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		StartDate:   nil,
 	}
 
-	if err := h.taskUseCase.CreateTask(r.Context(), task); err != nil {
+	if _, err := h.taskUseCase.CreateTask(r.Context(), task); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

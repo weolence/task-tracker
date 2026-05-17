@@ -141,18 +141,18 @@ func ptrValue(value *string) string {
 	return *value
 }
 
-func (r *TaskRepository) CreateTask(ctx context.Context, task domain.Task) error {
+func (r *TaskRepository) CreateTask(ctx context.Context, task domain.Task) (int32, error) {
 	difficultyID, err := r.categoryID(ctx, "difficulty", categoryNameForDifficulty(task.Difficulty))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	priorityID, err := r.categoryID(ctx, "priority", categoryNameForPriority(task.Priority))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	statusID, err := r.statusID(ctx, task.Status)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	query := `
@@ -161,7 +161,8 @@ func (r *TaskRepository) CreateTask(ctx context.Context, task domain.Task) error
 		RETURNING id
 	`
 
-	return r.pool.QueryRow(ctx, query,
+	var id int32
+	err = r.pool.QueryRow(ctx, query,
 		task.ProjectID,
 		task.AssigneeID,
 		task.Name,
@@ -171,7 +172,8 @@ func (r *TaskRepository) CreateTask(ctx context.Context, task domain.Task) error
 		statusID,
 		task.StartDate,
 		task.EndDate,
-	).Scan(&task.ID)
+	).Scan(&id)
+	return id, err
 }
 
 func (r *TaskRepository) DeleteTask(ctx context.Context, taskID int) error {

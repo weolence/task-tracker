@@ -84,6 +84,11 @@ func run() error {
 	mux.Handle("/api/is-manager", authMW(http.HandlerFunc(projH.IsUserManager)))
 	mux.Handle("/api/user-projects", authMW(http.HandlerFunc(projH.GetUserProjects)))
 
+	// ── Task lists ────────────────────────────────────────────────────────────
+	mux.Handle("/api/my-tasks", authMW(http.HandlerFunc(projH.GetMyTasks)))
+	mux.Handle("/api/project-tasks", authMW(http.HandlerFunc(projH.GetAllProjectTasks)))
+	mux.Handle("/api/closed-project-tasks", authMW(http.HandlerFunc(projH.GetClosedProjectTasks)))
+
 	// ── Tasks & Comments (shared router) ──────────────────────────────────────
 	mux.Handle("/api/tasks", authMW(http.HandlerFunc(projH.TasksRouter)))
 	mux.Handle("/api/tasks/", authMW(http.HandlerFunc(projH.TasksRouter)))

@@ -62,12 +62,8 @@ func (h *AuthHandler) GetCurrentUserID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
-	var req userv1.GetUserRequest
-	if err := readProtoJSON(r, &req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	resp, err := h.auth.GetUserInfo(outgoingCtx(r), &req)
+	userID, _ := r.Context().Value(ctxUserID).(int32)
+	resp, err := h.auth.GetUserInfo(outgoingCtx(r), &userv1.GetUserRequest{UserId: &userID})
 	if err != nil {
 		grpcErr, _ := status.FromError(err)
 		if grpcErr.Code() == codes.NotFound {
